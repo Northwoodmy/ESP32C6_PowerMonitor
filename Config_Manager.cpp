@@ -1,6 +1,7 @@
 #include "Config_Manager.h"
 #include "RGB_lamp.h"  // 添加RGB_lamp头文件
 #include "Power_Monitor.h"
+#include "Wireless.h"
 
 WebServer ConfigManager::server(80);
 DNSServer ConfigManager::dnsServer;
@@ -16,6 +17,11 @@ const char* ConfigManager::NVS_MONITOR_URL_KEY = "monitor_url";
 const char* DEFAULT_MONITOR_URL = "http://192.168.32.2/metrics";
 const char* URL_PREFIX = "http://";
 const char* URL_SUFFIX = "/metrics";
+
+// 添加WiFi状态防抖计数器
+static uint8_t wifiDisconnectCount = 0;
+static uint8_t wifiConnectCount = 0;
+static const uint8_t WIFI_STATE_THRESHOLD = 3;  // 状态变化阈值
 
 void ConfigManager::begin() {
     printf("[Config] Initializing configuration manager...\n");
@@ -111,30 +117,64 @@ void ConfigManager::handle() {
     dnsServer.processNextRequest();
     server.handleClient();
     
-    // 定期更新显示
+    // 定期更新显示和检查WiFi状态
     static unsigned long lastDisplayUpdate = 0;
+    static unsigned long lastWiFiCheck = 0;
     static bool lastWiFiStatus = false;
     
-    if (millis() - lastDisplayUpdate >= 1000) {  // 每秒更新一次显示
+    unsigned long currentMillis = millis();
+    
+    // 每200ms检查一次WiFi状态
+    if (currentMillis - lastWiFiCheck >= 200) {
         bool currentWiFiStatus = (WiFi.status() == WL_CONNECTED);
         
-        // 检查WiFi状态变化
-        if (currentWiFiStatus != lastWiFiStatus) {
-            if (!currentWiFiStatus && configured) {
-                // 已配置但WiFi断开连接时，显示错误屏幕
-                printf("[WiFi] Connection lost, showing error screen\n");
-                DisplayManager::createWiFiErrorScreen();
-            } else if (currentWiFiStatus) {
-                // WiFi连接成功时，删除错误屏幕并显示监控屏幕
-                printf("[WiFi] Connection established\n");
+        // 状态防抖处理
+        if (currentWiFiStatus) {
+            if (wifiConnectCount < WIFI_STATE_THRESHOLD) {
+                wifiConnectCount++;
+            }
+            wifiDisconnectCount = 0;
+        } else {
+            if (wifiDisconnectCount < WIFI_STATE_THRESHOLD) {
+                wifiDisconnectCount++;
+            }
+            wifiConnectCount = 0;
+        }
+        
+        // 只有当状态计数达到阈值时才更新显示
+        if (wifiConnectCount >= WIFI_STATE_THRESHOLD) {
+            if (!lastWiFiStatus) {
+                printf("[WiFi] Connection stable\n");
                 if (DisplayManager::isWiFiErrorScreenActive()) {
                     DisplayManager::deleteWiFiErrorScreen();
                 }
+                lastWiFiStatus = true;
+                WIFI_Connection = true;
             }
-            lastWiFiStatus = currentWiFiStatus;
+        } else if (wifiDisconnectCount >= WIFI_STATE_THRESHOLD) {
+            if (lastWiFiStatus && configured) {
+                printf("[WiFi] Connection lost (confirmed)\n");
+                DisplayManager::createWiFiErrorScreen();
+                lastWiFiStatus = false;
+                WIFI_Connection = false;
+                
+                // 尝试重新连接
+                String ssid = preferences.getString(NVS_SSID_KEY, "");
+                String password = preferences.getString(NVS_PASS_KEY, "");
+                if (ssid.length() > 0) {
+                    WiFi.disconnect();
+                    delay(100);
+                    WiFi.begin(ssid.c_str(), password.c_str());
+                }
+            }
         }
         
-        lastDisplayUpdate = millis();
+        lastWiFiCheck = currentMillis;
+    }
+    
+    // 每秒更新一次显示（其他UI元素）
+    if (currentMillis - lastDisplayUpdate >= 1000) {
+        lastDisplayUpdate = currentMillis;
     }
 }
 

@@ -428,10 +428,31 @@ void PowerMonitor_Stop() {
 
 // 更新UI
 void PowerMonitor_UpdateUI() {
-    // 定义临时字符串缓冲区
-    char text_buf[64];
+    if (ui_screen == nullptr) {
+        return;  // 如果屏幕未初始化，直接返回
+    }
+
+    // 使用静态缓冲区避免栈溢出
+    static char text_buf[128];
+    
     // 更新每个端口的显示
     for (int i = 0; i < MAX_PORTS; i++) {
+        if (ui_power_values[i] == nullptr) {
+            continue;  // 跳过未初始化的标签
+        }
+
+        // 启用标签的重着色功能
+        lv_label_set_recolor(ui_power_values[i], true);
+
+        if (dataError) {
+            // 数据错误时显示 "--"
+            lv_label_set_text(ui_power_values[i], "#888888 --.-W#");
+            if (ui_power_bars[i] != nullptr) {
+                lv_bar_set_value(ui_power_bars[i], 0, LV_ANIM_OFF);
+            }
+            continue;
+        }
+
         // 根据电压确定颜色代码
         const char* color_code;
         int voltage_mv = portInfos[i].voltage;
@@ -453,44 +474,53 @@ void PowerMonitor_UpdateUI() {
             color_code = "#888888";                      // 灰色（未识别电压）
         }
 
-        // 启用标签的重着色功能
-        lv_label_set_recolor(ui_power_values[i], true);
-
-        // 更新功率值标签 - 将浮点数转换为整数显示，并添加颜色标记
+        // 更新功率值标签
         int power_int = (int)(portInfos[i].power * 100);
+        memset(text_buf, 0, sizeof(text_buf));  // 清空缓冲区
+        snprintf(text_buf, sizeof(text_buf), "%s %d.%02dW#", 
+                color_code, 
+                power_int / 100, 
+                power_int % 100);
 
-        // 使用sprintf格式化文本到缓冲区
-        sprintf(text_buf, "%s %d.%02dW#", color_code, power_int / 100, power_int % 100);
-
-        // 设置标签文本
+        // 更新标签文本
         lv_label_set_text(ui_power_values[i], text_buf);
-               
-        // 更新进度条值（最大功率的百分比）
-        int percent = (int)((portInfos[i].power / MAX_PORT_WATTS) * 100);
-        // 确保非零功率至少显示一些进度
-        if (portInfos[i].power > 0 && percent == 0) {
-            percent = 1;
+
+        // 更新进度条
+        if (ui_power_bars[i] != nullptr) {
+            int percent = (int)((portInfos[i].power / MAX_PORT_WATTS) * 100);
+            if (portInfos[i].power > 0 && percent == 0) {
+                percent = 1;
+            }
+            lv_bar_set_value(ui_power_bars[i], percent, LV_ANIM_OFF);
         }
-        lv_bar_set_value(ui_power_bars[i], percent, LV_ANIM_OFF);
     }
 
-// 更新总功率标签 - 将浮点数转换为整数显示
-    int total_power_int = (int)(totalPower * 100);
-    
-    // 启用总功率标签的重着色功能
-    lv_label_set_recolor(ui_total_label, true);
+    // 更新总功率显示
+    if (ui_total_label != nullptr) {
+        lv_label_set_recolor(ui_total_label, true);
+        
+        if (dataError) {
+            lv_label_set_text(ui_total_label, "Total: #888888 --.-W#");
+            if (ui_total_bar != nullptr) {
+                lv_bar_set_value(ui_total_bar, 0, LV_ANIM_OFF);
+            }
+        } else {
+            int total_power_int = (int)(totalPower * 100);
+            memset(text_buf, 0, sizeof(text_buf));
+            snprintf(text_buf, sizeof(text_buf), 
+                    "Total: #FFFFFF %d.%02dW#",
+                    total_power_int / 100,
+                    total_power_int % 100);
+            
+            lv_label_set_text(ui_total_label, text_buf);
 
-// 使用sprintf格式化总功率文本
-    sprintf(text_buf, "Total: #FFFFFF %d.%02dW#", total_power_int / 100, total_power_int % 100);
-    
-    // 设置总功率标签
-    lv_label_set_text(ui_total_label, text_buf);
-    
-    // 更新总功率进度条
-    int totalPercent = (int)((totalPower / MAX_POWER_WATTS) * 100);
-    // 确保非零功率至少显示一些进度
-    if (totalPower > 0 && totalPercent == 0) {
-        totalPercent = 1;
+            if (ui_total_bar != nullptr) {
+                int totalPercent = (int)((totalPower / MAX_POWER_WATTS) * 100);
+                if (totalPower > 0 && totalPercent == 0) {
+                    totalPercent = 1;
+                }
+                lv_bar_set_value(ui_total_bar, totalPercent, LV_ANIM_OFF);
+            }
+        }
     }
-    lv_bar_set_value(ui_total_bar, totalPercent, LV_ANIM_OFF);
 }
