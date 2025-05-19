@@ -7,6 +7,7 @@
  */
 
 #include "Power_Monitor.h"
+#include "Display_Manager.h"
 #include <WiFi.h>
 #include "Wireless.h"
 #include <freertos/FreeRTOS.h>
@@ -14,6 +15,7 @@
 #include <freertos/queue.h>
 #include "Config_Manager.h"
 #include "Network_Scanner.h"
+#include <time.h>
 
 // 声明外部常量引用
 extern const int MAX_POWER_WATTS;
@@ -25,8 +27,9 @@ extern const int REFRESH_INTERVAL;
 
 // 全局变量
 PortInfo portInfos[MAX_PORTS];
-float totalPower = 0.0f;
+static float totalPower = 0.0f;  // 内部静态变量，只在本模块中可见
 bool dataError = false;  // 数据错误标志
+static bool scanUIActive = false;
 
 // UI组件
 static lv_obj_t *ui_screen = nullptr;
@@ -51,6 +54,63 @@ static lv_obj_t *scan_screen = nullptr;
 static lv_obj_t *scan_label = nullptr;
 static lv_obj_t *scan_status = nullptr;
 
+// NTP服务器配置
+const char* NTP_SERVER = "ntp.aliyun.com";  // 阿里云NTP服务器
+const char* TZ_INFO = "CST-8";              // 中国时区
+const long  GMT_OFFSET_SEC = 8 * 3600;      // 时区偏移（北京时间：GMT+8）
+const int   DAYLIGHT_OFFSET_SEC = 0;        // 夏令时偏移（中国不使用夏令时）
+
+// NTP同步间隔（30分钟）
+const unsigned long NTP_SYNC_INTERVAL = 30 * 60 * 1000;
+static unsigned long lastNTPSync = 0;
+
+// NTP时间同步函数
+void syncTimeWithNTP() {
+    printf("[Time] Synchronizing time with NTP server...\n");
+    
+    // 配置时区
+    setenv("TZ", TZ_INFO, 1);
+    tzset();
+    
+    // 配置NTP服务器
+    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+    
+    // 等待时间同步
+    int retry = 0;
+    const int maxRetries = 5;
+    time_t now = 0;
+    struct tm timeinfo = { 0 };
+    
+    while (timeinfo.tm_year < (2024 - 1900) && retry < maxRetries) {
+        printf("[Time] Waiting for NTP sync... (%d/%d)\n", retry + 1, maxRetries);
+        delay(1000);
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        retry++;
+    }
+    
+    if (timeinfo.tm_year >= (2024 - 1900)) {
+        printf("[Time] Time synchronized: %04d-%02d-%02d %02d:%02d:%02d\n",
+               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        lastNTPSync = millis();
+    } else {
+        printf("[Time] NTP sync failed after %d attempts\n", maxRetries);
+    }
+}
+
+// 检查是否需要同步时间
+void checkAndSyncTime() {
+    unsigned long currentMillis = millis();
+    
+    // 检查是否需要进行定期同步
+    if (currentMillis - lastNTPSync >= NTP_SYNC_INTERVAL) {
+        if (WiFi.status() == WL_CONNECTED) {
+            syncTimeWithNTP();
+        }
+    }
+}
+
 // 初始化电源监控
 void PowerMonitor_Init() {
     // 初始化端口信息
@@ -74,7 +134,7 @@ void PowerMonitor_Init() {
     dataQueue = xQueueCreate(1, sizeof(PowerData));
     
     // 创建UI
-    PowerMonitor_CreateUI();
+    DisplayManager::createPowerMonitorScreen();
     
     // 启动监控任务
     PowerMonitor_Start();
@@ -205,6 +265,8 @@ void PowerMonitor_CreateScanUI() {
     
     // 加载扫描屏幕
     lv_scr_load(scan_screen);
+
+    scanUIActive = true;
 }
 
 // 更新扫描状态
@@ -220,9 +282,9 @@ void PowerMonitor_Task(void* parameter) {
     String payload;
     bool lastWiFiState = false;
     uint32_t wifiRetryTime = 0;
-    const uint32_t WIFI_RETRY_INTERVAL = 5000; // 5秒重试一次WiFi连接
+    const uint32_t WIFI_RETRY_INTERVAL = 5000;
     uint32_t lastScanTime = 0;
-    const uint32_t SCAN_RETRY_INTERVAL = 30000; // 30秒重试一次扫描
+    const uint32_t SCAN_RETRY_INTERVAL = 30000;
     bool isScanning = false;
     
     while (true) {
@@ -232,7 +294,7 @@ void PowerMonitor_Task(void* parameter) {
         if (currentWiFiState != lastWiFiState) {
             if (currentWiFiState) {
                 printf("[Monitor] WiFi connected\n");
-                // WiFi刚连接上，等待1秒让连接稳定
+                syncTimeWithNTP();
                 vTaskDelay(pdMS_TO_TICKS(1000));
             } else {
                 printf("[Monitor] WiFi disconnected\n");
@@ -241,9 +303,13 @@ void PowerMonitor_Task(void* parameter) {
             lastWiFiState = currentWiFiState;
         }
         
+        // 检查并同步时间
+        if (currentWiFiState) {
+            checkAndSyncTime();
+        }
+        
         // 检查WiFi连接
         if (!currentWiFiState) {
-            // 如果WiFi断开，定期尝试重连
             uint32_t currentTime = millis();
             if (currentTime - wifiRetryTime >= WIFI_RETRY_INTERVAL) {
                 printf("[Monitor] Trying to reconnect WiFi...\n");
@@ -251,9 +317,8 @@ void PowerMonitor_Task(void* parameter) {
                 wifiRetryTime = currentTime;
             }
             
-            // 更新UI显示离线状态
             dataError = true;
-            vTaskDelay(pdMS_TO_TICKS(1000)); // WiFi断开时降低检查频率
+            vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
         
@@ -264,16 +329,8 @@ void PowerMonitor_Task(void* parameter) {
         http.begin(url);
         int httpCode = http.GET();
         
-        // 检查HTTP响应代码
         if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
-            if (isScanning) {
-                // 如果之前在扫描，现在恢复到监控界面
-                PowerMonitor_CreateUI();
-                isScanning = false;
-            }
             payload = http.getString();
-            
-            // 重置总功率
             totalPower = 0.0f;
             
             // 逐行解析数据
@@ -358,39 +415,40 @@ void PowerMonitor_Task(void* parameter) {
                 totalPower += portInfos[i].power;
             }
             
-            // 更新UI
-            PowerMonitor_UpdateUI();
+            // 如果之前在扫描状态，切换回电源监控屏幕
+            if (isScanning) {
+                DisplayManager::createPowerMonitorScreen();
+                isScanning = false;
+            }
+            
+            // 只在显示电源监控屏幕时更新UI
+            if (DisplayManager::isPowerMonitorScreenActive()) {
+                DisplayManager::updatePowerMonitorScreen();
+            }
+            
             dataError = false;
             printf("[Monitor] Data updated successfully\n");
         } else {
             dataError = true;
             printf("[Monitor] Failed to fetch data, HTTP code: %d\n", httpCode);
             
-            // 如果获取数据失败，尝试扫描新的服务器
             uint32_t currentTime = millis();
             if (currentTime - lastScanTime >= SCAN_RETRY_INTERVAL) {
                 if (!isScanning) {
-                    // 显示扫描界面
-                    PowerMonitor_CreateScanUI();
+                    DisplayManager::createPowerMonitorScreen();  // 创建电源监控屏幕而不是扫描屏幕
                     isScanning = true;
                 }
                 
                 printf("[Monitor] Trying to find new metrics server...\n");
                 String newUrl;
                 
-                // 更新扫描状态并开始扫描
-                PowerMonitor_UpdateScanStatus("Scanning network...");
                 if (NetworkScanner::findMetricsServer(newUrl, true)) {
-                    PowerMonitor_UpdateScanStatus("Device found, connecting...");
                     printf("[Monitor] Found new metrics server, updating URL to: %s\n", newUrl.c_str());
                     ConfigManager::saveMonitorUrl(newUrl.c_str());
-                    vTaskDelay(pdMS_TO_TICKS(1000)); // 显示状态1秒
+                    vTaskDelay(pdMS_TO_TICKS(1000));
                     
-                    // 切换回监控界面
-                    PowerMonitor_CreateUI();
+                    DisplayManager::createPowerMonitorScreen();
                     isScanning = false;
-                } else {
-                    PowerMonitor_UpdateScanStatus("No device found, retry later");
                 }
                 
                 lastScanTime = currentTime;
@@ -398,8 +456,6 @@ void PowerMonitor_Task(void* parameter) {
         }
         
         http.end();
-        
-        // 延时200ms后再次获取数据
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
@@ -523,4 +579,14 @@ void PowerMonitor_UpdateUI() {
             }
         }
     }
+}
+
+// 获取总功率
+float PowerMonitor_GetTotalPower() {
+    return totalPower;
+}
+
+// 检查扫描UI是否激活
+bool PowerMonitor_IsScanUIActive() {
+    return scanUIActive;
 }

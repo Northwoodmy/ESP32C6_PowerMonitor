@@ -41,7 +41,6 @@ struct PowerData {
 
 // 所有端口信息
 extern PortInfo portInfos[MAX_PORTS];
-extern float totalPower;
 
 // 数据获取任务句柄
 extern TaskHandle_t monitorTaskHandle;  // 监控任务句柄
@@ -72,5 +71,8 @@ void PowerMonitor_UpdateUI();
 
 // 更新WiFi状态
 void PowerMonitor_UpdateWiFiStatus();
+
+float PowerMonitor_GetTotalPower();
+bool PowerMonitor_IsScanUIActive();
 
 #endif /* POWER_MONITOR_H */ 

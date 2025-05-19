@@ -46,6 +46,11 @@ bool displayInitialized = false;
 bool powerMonitorInitialized = false;
 bool lastRGBState = false;
 
+// 屏幕切换相关
+const unsigned long SCREEN_SWITCH_DELAY = 60000;  // 1分钟延迟
+unsigned long lastPowerCheckTime = 0;
+const unsigned long POWER_CHECK_INTERVAL = 1000;  // 每秒检查一次功率
+
 // RGB控制任务相关
 TaskHandle_t rgbTaskHandle = NULL;
 const uint32_t RGB_TASK_STACK_SIZE = 2048;
@@ -136,6 +141,37 @@ bool initializeSystem() {
     return true;
 }
 
+void checkAndUpdateScreen() {
+    if (!powerMonitorInitialized) return;
+    
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastPowerCheckTime < POWER_CHECK_INTERVAL) return;
+    lastPowerCheckTime = currentMillis;
+    
+    float totalPower = PowerMonitor_GetTotalPower();
+    static bool lowPowerTimerStarted = false;
+    static unsigned long lowPowerStartTime = 0;
+    
+    if (totalPower < 1.0) {
+        if (!lowPowerTimerStarted) {
+            lowPowerStartTime = currentMillis;
+            lowPowerTimerStarted = true;
+        } else if (currentMillis - lowPowerStartTime >= SCREEN_SWITCH_DELAY) {
+            // 如果低功率持续1分钟，切换到时间显示
+            if (!DisplayManager::isTimeScreenActive()) {
+                DisplayManager::createTimeScreen();
+            }
+            DisplayManager::updateTimeScreen();  // 更新时间显示
+        }
+    } else if (totalPower > 2.0) {
+        lowPowerTimerStarted = false;
+        if (DisplayManager::isTimeScreenActive()) {
+            DisplayManager::deleteTimeScreen();
+            DisplayManager::createPowerMonitorScreen();  // 切换回电源监控屏幕
+        }
+    }
+}
+
 void setup()
 {
     // 等待系统稳定
@@ -165,6 +201,9 @@ void loop()
     if (displayInitialized) {
         lv_timer_handler();
     }
+    
+    // 检查并更新屏幕显示
+    checkAndUpdateScreen();
     
     // 定期检查WiFi状态
     if (currentMillis - lastWiFiCheck >= WIFI_CHECK_INTERVAL) {
