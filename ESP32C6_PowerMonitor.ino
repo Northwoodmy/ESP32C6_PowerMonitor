@@ -37,9 +37,7 @@ const int MAX_PORT_WATTS = 140;     // 每个端口最大功率 140W
 const int REFRESH_INTERVAL = 500;   // 刷新间隔 (ms)
 
 // 任务计时器
-unsigned long lastRGBUpdate = 0;
 unsigned long lastWiFiCheck = 0;
-const unsigned long RGB_UPDATE_INTERVAL = 20;     // RGB更新间隔 (ms)
 const unsigned long WIFI_CHECK_INTERVAL = 1000;   // WiFi状态检查间隔 (ms)
 
 // 系统状态
@@ -47,6 +45,44 @@ bool systemInitialized = false;
 bool displayInitialized = false;
 bool powerMonitorInitialized = false;
 bool lastRGBState = false;
+
+// RGB控制任务相关
+TaskHandle_t rgbTaskHandle = NULL;
+const uint32_t RGB_TASK_STACK_SIZE = 2048;
+const UBaseType_t RGB_TASK_PRIORITY = 1;
+const unsigned long RGB_UPDATE_INTERVAL = 20;     // RGB更新间隔 (ms)
+
+// RGB控制任务
+void rgbControlTask(void* parameter) {
+    printf("[RGB] Task started\n");
+    unsigned long lastUpdate = 0;
+    bool lastState = ConfigManager::isRGBEnabled();
+    
+    while(1) {
+        unsigned long currentMillis = millis();
+        bool currentState = ConfigManager::isRGBEnabled();
+        
+        // 检查RGB灯状态变化
+        if (currentState != lastState) {
+            if (!currentState) {
+                RGB_Lamp_Off();
+                printf("[RGB] RGB lamp disabled\n");
+            } else {
+                printf("[RGB] RGB lamp enabled\n");
+            }
+            lastState = currentState;
+        }
+        
+        // 更新RGB灯效果
+        if (currentState && (currentMillis - lastUpdate >= RGB_UPDATE_INTERVAL)) {
+            RGB_Lamp_Loop(1);
+            lastUpdate = currentMillis;
+        }
+        
+        // 任务延时
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+}
 
 // 系统初始化函数
 bool initializeSystem() {
@@ -84,8 +120,18 @@ bool initializeSystem() {
     } else {
         printf("[RGB] RGB lamp enabled\n");
     }
+    
+    // 创建RGB控制任务
+    xTaskCreate(
+        rgbControlTask,          // 任务函数
+        "RGBControlTask",        // 任务名称
+        RGB_TASK_STACK_SIZE,     // 堆栈大小
+        NULL,                    // 任务参数
+        RGB_TASK_PRIORITY,       // 任务优先级
+        &rgbTaskHandle           // 任务句柄
+    );
+    
     delay(100);
-
     printf("[System] System initialization complete\n");
     return true;
 }
@@ -140,24 +186,6 @@ void loop()
         }
         
         lastWiFiCheck = currentMillis;
-    }
-    
-    // 检查并更新RGB灯状态
-    bool currentRGBState = ConfigManager::isRGBEnabled();
-    if (currentRGBState != lastRGBState) {
-        if (!currentRGBState) {
-            RGB_Lamp_Off();
-            printf("[RGB] RGB lamp disabled\n");
-        } else {
-            printf("[RGB] RGB lamp enabled\n");
-        }
-        lastRGBState = currentRGBState;
-    }
-    
-    // 更新RGB灯效果
-    if (currentMillis - lastRGBUpdate >= RGB_UPDATE_INTERVAL && currentRGBState) {
-        RGB_Lamp_Loop(1);
-        lastRGBUpdate = currentMillis;
     }
     
     // 给其他任务一些执行时间
