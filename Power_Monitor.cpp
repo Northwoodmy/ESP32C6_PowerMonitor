@@ -410,7 +410,7 @@ void PowerMonitor_Start() {
         xTaskCreate(
             PowerMonitor_Task,    // 任务函数
             "MonitorTask",        // 任务名称
-            8192,                 // 堆栈大小
+            16284,                 // 堆栈大小
             NULL,                 // 任务参数
             1,                    // 任务优先级
             &monitorTaskHandle    // 任务句柄

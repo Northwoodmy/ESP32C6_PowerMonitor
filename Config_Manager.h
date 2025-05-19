@@ -37,6 +37,12 @@ private:
     static void handleReset();
     static String extractIPFromUrl(const String& url);
     
+    // Web服务任务相关
+    static void webServerTask(void* parameter);
+    static TaskHandle_t webServerTaskHandle;
+    static const uint32_t WEB_SERVER_STACK_SIZE = 8192;
+    static const UBaseType_t WEB_SERVER_PRIORITY = 1;
+    
     static WebServer server;
     static DNSServer dnsServer;
     static Preferences preferences;

@@ -120,9 +120,6 @@ void loop()
         lv_timer_handler();
     }
     
-    // 处理配置门户
-    ConfigManager::handle();
-    
     // 定期检查WiFi状态
     if (currentMillis - lastWiFiCheck >= WIFI_CHECK_INTERVAL) {
         bool wifiReady = ConfigManager::isConfigured() && ConfigManager::isConnected();

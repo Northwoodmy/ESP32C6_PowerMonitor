@@ -8,6 +8,7 @@ DNSServer ConfigManager::dnsServer;
 Preferences ConfigManager::preferences;
 bool ConfigManager::configured = false;
 bool ConfigManager::apStarted = false;
+TaskHandle_t ConfigManager::webServerTaskHandle = NULL;
 const char* ConfigManager::AP_SSID = "ESP32_Config";
 const char* ConfigManager::NVS_NAMESPACE = "wifi_config";
 const char* ConfigManager::NVS_SSID_KEY = "ssid";
@@ -110,72 +111,93 @@ void ConfigManager::startConfigPortal() {
         delay(100);  // 添加延时
         setupAP();
         apStarted = true;
+        
+        // 创建web服务任务
+        xTaskCreate(
+            webServerTask,           // 任务函数
+            "WebServerTask",         // 任务名称
+            WEB_SERVER_STACK_SIZE,   // 堆栈大小
+            NULL,                    // 任务参数
+            WEB_SERVER_PRIORITY,     // 任务优先级
+            &webServerTaskHandle     // 任务句柄
+        );
+    }
+}
+
+void ConfigManager::webServerTask(void* parameter) {
+    printf("[WebServer] Task started\n");
+    
+    while(1) {
+        dnsServer.processNextRequest();
+        server.handleClient();
+        
+        // 定期更新显示和检查WiFi状态
+        static unsigned long lastDisplayUpdate = 0;
+        static unsigned long lastWiFiCheck = 0;
+        static bool lastWiFiStatus = false;
+        
+        unsigned long currentMillis = millis();
+        
+        // 每200ms检查一次WiFi状态
+        if (currentMillis - lastWiFiCheck >= 200) {
+            bool currentWiFiStatus = (WiFi.status() == WL_CONNECTED);
+            
+            // 状态防抖处理
+            if (currentWiFiStatus) {
+                if (wifiConnectCount < WIFI_STATE_THRESHOLD) {
+                    wifiConnectCount++;
+                }
+                wifiDisconnectCount = 0;
+            } else {
+                if (wifiDisconnectCount < WIFI_STATE_THRESHOLD) {
+                    wifiDisconnectCount++;
+                }
+                wifiConnectCount = 0;
+            }
+            
+            // 只有当状态计数达到阈值时才更新显示
+            if (wifiConnectCount >= WIFI_STATE_THRESHOLD) {
+                if (!lastWiFiStatus) {
+                    printf("[WiFi] Connection stable\n");
+                    if (DisplayManager::isWiFiErrorScreenActive()) {
+                        DisplayManager::deleteWiFiErrorScreen();
+                    }
+                    lastWiFiStatus = true;
+                    WIFI_Connection = true;
+                }
+            } else if (wifiDisconnectCount >= WIFI_STATE_THRESHOLD) {
+                if (lastWiFiStatus && configured) {
+                    printf("[WiFi] Connection lost (confirmed)\n");
+                    DisplayManager::createWiFiErrorScreen();
+                    lastWiFiStatus = false;
+                    WIFI_Connection = false;
+                    
+                    // 尝试重新连接
+                    String ssid = preferences.getString(NVS_SSID_KEY, "");
+                    String password = preferences.getString(NVS_PASS_KEY, "");
+                    if (ssid.length() > 0) {
+                        WiFi.disconnect();
+                        delay(100);
+                        WiFi.begin(ssid.c_str(), password.c_str());
+                    }
+                }
+            }
+            
+            lastWiFiCheck = currentMillis;
+        }
+        
+        // 每秒更新一次显示（其他UI元素）
+        if (currentMillis - lastDisplayUpdate >= 1000) {
+            lastDisplayUpdate = currentMillis;
+        }
+        
+        // 给其他任务一些执行时间
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
 void ConfigManager::handle() {
-    dnsServer.processNextRequest();
-    server.handleClient();
-    
-    // 定期更新显示和检查WiFi状态
-    static unsigned long lastDisplayUpdate = 0;
-    static unsigned long lastWiFiCheck = 0;
-    static bool lastWiFiStatus = false;
-    
-    unsigned long currentMillis = millis();
-    
-    // 每200ms检查一次WiFi状态
-    if (currentMillis - lastWiFiCheck >= 200) {
-        bool currentWiFiStatus = (WiFi.status() == WL_CONNECTED);
-        
-        // 状态防抖处理
-        if (currentWiFiStatus) {
-            if (wifiConnectCount < WIFI_STATE_THRESHOLD) {
-                wifiConnectCount++;
-            }
-            wifiDisconnectCount = 0;
-        } else {
-            if (wifiDisconnectCount < WIFI_STATE_THRESHOLD) {
-                wifiDisconnectCount++;
-            }
-            wifiConnectCount = 0;
-        }
-        
-        // 只有当状态计数达到阈值时才更新显示
-        if (wifiConnectCount >= WIFI_STATE_THRESHOLD) {
-            if (!lastWiFiStatus) {
-                printf("[WiFi] Connection stable\n");
-                if (DisplayManager::isWiFiErrorScreenActive()) {
-                    DisplayManager::deleteWiFiErrorScreen();
-                }
-                lastWiFiStatus = true;
-                WIFI_Connection = true;
-            }
-        } else if (wifiDisconnectCount >= WIFI_STATE_THRESHOLD) {
-            if (lastWiFiStatus && configured) {
-                printf("[WiFi] Connection lost (confirmed)\n");
-                DisplayManager::createWiFiErrorScreen();
-                lastWiFiStatus = false;
-                WIFI_Connection = false;
-                
-                // 尝试重新连接
-                String ssid = preferences.getString(NVS_SSID_KEY, "");
-                String password = preferences.getString(NVS_PASS_KEY, "");
-                if (ssid.length() > 0) {
-                    WiFi.disconnect();
-                    delay(100);
-                    WiFi.begin(ssid.c_str(), password.c_str());
-                }
-            }
-        }
-        
-        lastWiFiCheck = currentMillis;
-    }
-    
-    // 每秒更新一次显示（其他UI元素）
-    if (currentMillis - lastDisplayUpdate >= 1000) {
-        lastDisplayUpdate = currentMillis;
-    }
+    // 空实现，保持API兼容性
 }
 
 void ConfigManager::setupAP() {
