@@ -32,7 +32,7 @@
 #include "Display_Manager.h"
 
 // 电源监控配置
-const int MAX_POWER_WATTS = 160;    // 最大总功率 180W
+const int MAX_POWER_WATTS = 160;    // 最大总功率 160W
 const int MAX_PORT_WATTS = 140;     // 每个端口最大功率 140W
 const int REFRESH_INTERVAL = 500;   // 刷新间隔 (ms)
 
