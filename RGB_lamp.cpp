@@ -2,7 +2,9 @@
 
 uint16_t Time = 0;
 uint16_t Number = 0;
-bool isRGBRunning = false;  // 添加运行状态标志
+bool isRGBRunning = false;
+// 预计算RGB值，避免运行时重复计算
+uint8_t RGB_Precalculated[192][3] = {0};
 uint8_t RGB_Data[192][3] = {
   {64, 1, 0},  {63, 2, 0},  {62, 3, 0},  {61, 4, 0},  {60, 5, 0},  {59, 6, 0},  {58, 7, 0},  {57, 8, 0},
   {56, 9, 0},  {55, 10, 0}, {54, 11, 0}, {53, 12, 0}, {52, 13, 0}, {51, 14, 0}, {50, 15, 0}, {49, 16, 0},
@@ -31,16 +33,36 @@ uint8_t RGB_Data[192][3] = {
   {49, 0, 16}, {50, 0, 15}, {51, 0, 14}, {52, 0, 13}, {53, 0, 12}, {54, 0, 11}, {55, 0, 10}, {56, 0, 9},
   {57, 0, 8},  {58, 0, 7},  {59, 0, 6},  {60, 0, 5},  {61, 0, 4},  {62, 0, 3},  {63, 0, 2},  {64, 0, 1}
 };
+
+// 初始化函数，预计算所有RGB值
+void RGB_Lamp_Init() {
+  for(int i = 0; i < 192; i++) {
+    RGB_Precalculated[i][0] = RGB_Data[i][0] * 3;
+    RGB_Precalculated[i][1] = RGB_Data[i][1] * 3;
+    RGB_Precalculated[i][2] = RGB_Data[i][2] * 3;
+  }
+}
+
 // data range -> Red:0~255  Green:0~255  Blue:0~255
 void Set_Color(uint8_t Red, uint8_t Green, uint8_t Blue) {
     neopixelWrite(PIN_NEOPIXEL, Red, Green, Blue);
 }
+
+uint8_t lastColorIndex = 255; // 无效值，确保首次一定会更新
+
 void RGB_Lamp_Loop(uint16_t Waiting)
 { 
     if (!isRGBRunning) {
         isRGBRunning = true;
-        // 首次启动时立即显示颜色
-        Set_Color(RGB_Data[Number][0]*3, RGB_Data[Number][1]*3, RGB_Data[Number][2]*3);
+        // 确保首次启动时立即显示颜色
+        lastColorIndex = 255; // 强制更新
+        
+        // 立即显示第一个颜色，而不是等待
+        Set_Color(RGB_Precalculated[Number][0], 
+                 RGB_Precalculated[Number][1], 
+                 RGB_Precalculated[Number][2]);
+        lastColorIndex = Number;
+        return; // 立即返回，避免递增计数器
     }
     
     Time++;
@@ -50,12 +72,28 @@ void RGB_Lamp_Loop(uint16_t Waiting)
         if (Number >= 192) {
             Number = 0;
         }
-        Set_Color(RGB_Data[Number][0]*3, RGB_Data[Number][1]*3, RGB_Data[Number][2]*3);
+        
+        // 只有颜色发生变化时才更新LED
+        if (Number != lastColorIndex) {
+            Set_Color(RGB_Precalculated[Number][0], 
+                     RGB_Precalculated[Number][1], 
+                     RGB_Precalculated[Number][2]);
+            lastColorIndex = Number;
+        }
     }
 }
+
 void RGB_Lamp_Off() {
-    isRGBRunning = false;
-    Time = 0;
-    Number = 0;
-    Set_Color(0, 0, 0);  // 设置RGB颜色为黑色（关闭）
+    if (isRGBRunning) {  // 只有在运行时才需要关闭
+        isRGBRunning = false;
+        Time = 0;
+        Number = 0;
+        lastColorIndex = 255;
+        Set_Color(0, 0, 0);  // 设置RGB颜色为黑色（关闭）
+    }
+}
+
+// 设置RGB灯运行状态
+void RGB_Lamp_SetRunning(bool running) {
+    isRGBRunning = running;
 }

@@ -337,13 +337,19 @@ void ConfigManager::handleRoot() {
             
             function toggleRGB() {
                 const enabled = document.getElementById('rgb-switch').checked;
+                const enabledStr = enabled ? 'true' : 'false';
+                console.log('Toggling RGB to: ' + enabledStr);
+                
                 fetch('/rgb', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: 'enabled=' + enabled
-                }).then(() => {
+                    body: 'enabled=' + enabledStr
+                }).then(response => {
+                    console.log('RGB toggle response:', response.status);
                     lastUpdate = 0;
                     updateStatus();
+                }).catch(error => {
+                    console.error('RGB toggle error:', error);
                 });
             }
 
@@ -399,16 +405,23 @@ void ConfigManager::handleStatus() {
 
 void ConfigManager::handleRGBControl() {
     if (server.hasArg("enabled")) {
-        bool enabled = server.arg("enabled") == "true";
+        String enabledStr = server.arg("enabled");
+        printf("[RGB] Received control request: enabled=%s\n", enabledStr.c_str());
+        
+        bool enabled = (enabledStr == "true");
+        printf("[RGB] Setting RGB enabled state to: %s\n", enabled ? "true" : "false");
+        
         setRGBEnabled(enabled);
         
         // 立即应用RGB灯状态
         if (enabled) {
-            printf("RGB Light enabled\n");
-            // 立即启动一次RGB效果
+            printf("[RGB] RGB Light enabled - activating\n");
+            // 设置RGB灯状态为运行中
+            RGB_Lamp_SetRunning(true);
+            // 立即启动一次RGB效果以显示颜色
             RGB_Lamp_Loop(1);
         } else {
-            printf("RGB Light disabled\n");
+            printf("[RGB] RGB Light disabled - turning off\n");
             // 立即关闭RGB灯
             RGB_Lamp_Off();
         }
@@ -416,7 +429,7 @@ void ConfigManager::handleRGBControl() {
         // 立即响应请求
         server.send(200, "text/plain", "OK");
     } else {
-        printf("Missing RGB control parameter\n");
+        printf("[RGB] Missing RGB control parameter\n");
         server.send(400, "text/plain", "Missing enabled parameter");
     }
 }

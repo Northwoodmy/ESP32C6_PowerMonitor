@@ -76,6 +76,7 @@ bool initializeSystem() {
 
     // 初始化RGB灯
     printf("[RGB] Initializing RGB lamp...\n");
+    RGB_Lamp_Init();  // 初始化RGB灯数据
     lastRGBState = ConfigManager::isRGBEnabled();
     if (!lastRGBState) {
         RGB_Lamp_Off();
