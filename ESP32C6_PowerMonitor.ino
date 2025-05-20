@@ -211,7 +211,7 @@ void loop()
         
         if (wifiReady && !powerMonitorInitialized) {
             printf("[Power] Initializing power monitor...\n");
-            PowerMonitor_Init();  // 直接调用，不检查返回值
+            PowerMonitor_Init();
             powerMonitorInitialized = true;
             printf("[Power] Power monitor initialized successfully\n");
             printf("[WiFi] Connected to: %s\n", ConfigManager::getSSID().c_str());

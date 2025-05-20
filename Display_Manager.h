@@ -26,6 +26,12 @@ public:
     static void deletePowerMonitorScreen();
     static void updatePowerMonitorScreen();
     static bool isPowerMonitorScreenActive();
+
+    // 扫描界面相关函数
+    static void createScanScreen();
+    static void deleteScanScreen();
+    static bool isScanScreenActive();
+    static void updateScanStatus(const char* status);
     
     // 屏幕亮度设置
     static const uint8_t BRIGHTNESS_NORMAL = 42;  // 正常亮度
@@ -37,11 +43,15 @@ private:
     static lv_obj_t* currentScreen;
     static lv_obj_t* wifiErrorScreen;
     static lv_obj_t* powerMonitorScreen;
+    static lv_obj_t* scanScreen;  // 扫描界面
     static bool apScreenActive;
     static bool wifiErrorScreenActive;
     static bool timeScreenActive;
     static bool powerMonitorScreenActive;
+    static bool scanScreenActive;  // 扫描界面状态
     static lv_obj_t* timeLabel;
+    static lv_obj_t* scanLabel;    // 扫描标题
+    static lv_obj_t* scanStatus;   // 扫描状态
     static unsigned long screenSwitchTime;  // 用于记录屏幕切换时间
     static lv_obj_t* ui_title;
     static lv_obj_t* ui_total_label;

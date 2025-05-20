@@ -6,6 +6,7 @@ lv_obj_t* DisplayManager::apScreen = nullptr;
 lv_obj_t* DisplayManager::currentScreen = nullptr;
 lv_obj_t* DisplayManager::wifiErrorScreen = nullptr;
 lv_obj_t* DisplayManager::powerMonitorScreen = nullptr;
+lv_obj_t* DisplayManager::scanScreen = nullptr;
 
 // UI组件 - 电源监控
 lv_obj_t* DisplayManager::ui_title = nullptr;
@@ -16,11 +17,16 @@ lv_obj_t* DisplayManager::ui_power_bars[MAX_PORTS] = {nullptr};
 lv_obj_t* DisplayManager::ui_total_bar = nullptr;
 lv_obj_t* DisplayManager::ui_wifi_status = nullptr;
 
+// UI组件 - 扫描界面
+lv_obj_t* DisplayManager::scanLabel = nullptr;
+lv_obj_t* DisplayManager::scanStatus = nullptr;
+
 // 状态标志初始化
 bool DisplayManager::apScreenActive = false;
 bool DisplayManager::wifiErrorScreenActive = false;
 bool DisplayManager::timeScreenActive = false;
 bool DisplayManager::powerMonitorScreenActive = false;
+bool DisplayManager::scanScreenActive = false;
 bool DisplayManager::dataError = false;
 lv_obj_t* DisplayManager::timeLabel = nullptr;
 unsigned long DisplayManager::screenSwitchTime = 0;
@@ -30,6 +36,26 @@ void DisplayManager::init() {
 }
 
 void DisplayManager::createAPScreen(const char* ssid, const char* ip) {
+    printf("[Display] Creating AP screen\n");
+    
+    // 先检查并删除其他屏幕
+    if (wifiErrorScreenActive) {
+        deleteWiFiErrorScreen();
+    }
+    if (timeScreenActive) {
+        deleteTimeScreen();
+    }
+    if (powerMonitorScreenActive) {
+        deletePowerMonitorScreen();
+    }
+    if (scanScreenActive) {
+        deleteScanScreen();
+    }
+    if (apScreenActive) {
+        printf("[Display] AP screen already active\n");
+        return;
+    }
+    
     if (apScreen != nullptr) {
         deleteAPScreen();
     }
@@ -94,6 +120,26 @@ bool DisplayManager::isAPScreenActive() {
 }
 
 void DisplayManager::createWiFiErrorScreen() {
+    printf("[Display] Creating WiFi error screen\n");
+    
+    // 先检查并删除其他屏幕
+    if (apScreenActive) {
+        deleteAPScreen();
+    }
+    if (timeScreenActive) {
+        deleteTimeScreen();
+    }
+    if (powerMonitorScreenActive) {
+        deletePowerMonitorScreen();
+    }
+    if (scanScreenActive) {
+        deleteScanScreen();
+    }
+    if (wifiErrorScreenActive) {
+        printf("[Display] WiFi error screen already active\n");
+        return;
+    }
+    
     if (wifiErrorScreen != nullptr) {
         deleteWiFiErrorScreen();
     }
@@ -139,11 +185,19 @@ bool DisplayManager::isWiFiErrorScreenActive() {
 void DisplayManager::createTimeScreen() {
     printf("[Display] Creating time screen\n");
     
-    // 先删除其他屏幕
+    // 先检查并删除其他屏幕
+    if (apScreenActive) {
+        deleteAPScreen();
+    }
+    if (wifiErrorScreenActive) {
+        deleteWiFiErrorScreen();
+    }
     if (powerMonitorScreenActive) {
         deletePowerMonitorScreen();
     }
-    
+    if (scanScreenActive) {
+        deleteScanScreen();
+    }
     if (timeScreenActive) {
         printf("[Display] Time screen already active\n");
         return;
@@ -231,15 +285,24 @@ void DisplayManager::updateTimeScreen() {
 void DisplayManager::createPowerMonitorScreen() {
     printf("[Display] Creating power monitor screen\n");
     
-    // 先删除其他屏幕
+    // 先检查并删除其他屏幕
+    if (apScreenActive) {
+        deleteAPScreen();
+    }
+    if (wifiErrorScreenActive) {
+        deleteWiFiErrorScreen();
+    }
     if (timeScreenActive) {
         deleteTimeScreen();
     }
-    
-    if (powerMonitorScreen != nullptr) {
-        deletePowerMonitorScreen();
+    if (scanScreenActive) {
+        deleteScanScreen();
     }
-    
+    if (powerMonitorScreenActive) {
+        printf("[Display] Power monitor screen already active\n");
+        return;
+    }
+
     // 创建屏幕
     powerMonitorScreen = lv_obj_create(NULL);
     if (powerMonitorScreen == nullptr) {
@@ -269,6 +332,7 @@ void DisplayManager::createPowerMonitorScreen() {
 }
 
 bool DisplayManager::createPowerMonitorContent() {
+
     // 标题
     ui_title = lv_label_create(powerMonitorScreen);
     if (ui_title == nullptr) return false;
@@ -473,4 +537,94 @@ bool DisplayManager::isPowerMonitorScreenActive() {
 void DisplayManager::setScreenBrightness(uint8_t brightness) {
     Set_Backlight(brightness);
     printf("[Display] Brightness set to %d\n", brightness);
+}
+
+// 创建扫描界面
+void DisplayManager::createScanScreen() {
+    printf("[Display] Creating scan screen\n");
+    
+    // 先检查并删除其他屏幕
+    if (apScreenActive) {
+        deleteAPScreen();
+    }
+    if (wifiErrorScreenActive) {
+        deleteWiFiErrorScreen();
+    }
+    if (timeScreenActive) {
+        deleteTimeScreen();
+    }
+    if (powerMonitorScreenActive) {
+        deletePowerMonitorScreen();
+    }
+    if (scanScreenActive) {
+        printf("[Display] Scan screen already active\n");
+        return;
+    }
+    
+    if (scanScreen != nullptr) {
+        deleteScanScreen();
+    }
+    
+    // 创建扫描屏幕
+    scanScreen = lv_obj_create(NULL);
+    if (scanScreen == nullptr) {
+        printf("[Display] Failed to create scan screen\n");
+        return;
+    }
+    
+    lv_obj_set_style_bg_color(scanScreen, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    
+    // 创建标题
+    scanLabel = lv_label_create(scanScreen);
+    lv_label_set_text(scanLabel, "Scanning Devices...");
+    lv_obj_set_style_text_color(scanLabel, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(scanLabel, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(scanLabel, LV_ALIGN_CENTER, 0, -30);
+    
+    // 创建状态文本
+    scanStatus = lv_label_create(scanScreen);
+    lv_label_set_text(scanStatus, "Searching for devices on network");
+    lv_obj_set_style_text_color(scanStatus, lv_color_hex(0x00FF00), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(scanStatus, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(scanStatus, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_width(scanStatus, 240);
+    lv_label_set_long_mode(scanStatus, LV_LABEL_LONG_WRAP);
+    lv_obj_align(scanStatus, LV_ALIGN_CENTER, 0, 30);
+    
+    // 加载扫描屏幕
+    lv_scr_load(scanScreen);
+    currentScreen = scanScreen;
+    scanScreenActive = true;
+    
+    // 设置为正常亮度
+    setScreenBrightness(BRIGHTNESS_NORMAL);
+    
+    printf("[Display] Scan screen created successfully\n");
+}
+
+// 删除扫描界面
+void DisplayManager::deleteScanScreen() {
+    printf("[Display] Deleting scan screen\n");
+    
+    if (scanScreen != nullptr) {
+        lv_obj_del(scanScreen);
+        scanScreen = nullptr;
+        scanLabel = nullptr;
+        scanStatus = nullptr;
+        scanScreenActive = false;
+    }
+    
+    printf("[Display] Scan screen deleted\n");
+}
+
+// 检查扫描界面是否活动
+bool DisplayManager::isScanScreenActive() {
+    return scanScreenActive;
+}
+
+// 更新扫描状态
+void DisplayManager::updateScanStatus(const char* status) {
+    if (scanStatus != nullptr) {
+        lv_label_set_text(scanStatus, status);
+    }
 } 

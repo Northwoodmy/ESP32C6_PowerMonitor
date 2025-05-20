@@ -140,142 +140,6 @@ void PowerMonitor_Init() {
     PowerMonitor_Start();
 }
 
-// 创建电源显示UI
-void PowerMonitor_CreateUI() {
-
-    //先判断是不是已经创建，如果已经创建，先删除再创建，防止内存益处
-    if (ui_screen != nullptr) {
-        lv_obj_del(ui_screen);
-        ui_screen = nullptr;
-    }
-
-    // 创建屏幕
-    ui_screen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(ui_screen, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
-    
-    // 标题
-    ui_title = lv_label_create(ui_screen);
-    lv_label_set_text(ui_title, "Power Monitor");
-    lv_obj_set_style_text_color(ui_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_title, &lv_font_montserrat_16, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(ui_title, LV_ALIGN_TOP_MID, 0, 5);
-    
-    // WiFi状态
-    ui_wifi_status = lv_label_create(ui_screen);
-    lv_label_set_text(ui_wifi_status, "WiFi");
-    lv_obj_set_style_text_color(ui_wifi_status, lv_color_hex(0x00FF00), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(ui_wifi_status, LV_ALIGN_TOP_RIGHT, -10, 5);
-    
-    // 屏幕高度只有172像素，布局需要紧凑
-    uint8_t start_y = 30;
-    uint8_t item_height = 22;
-    
-    // 为每个端口创建UI元素
-    for (int i = 0; i < MAX_PORTS; i++) {
-        // 端口名称标签
-        ui_port_labels[i] = lv_label_create(ui_screen);
-        lv_label_set_text_fmt(ui_port_labels[i], "%s:", portInfos[i].name);
-        lv_obj_set_style_text_color(ui_port_labels[i], lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_align(ui_port_labels[i], LV_ALIGN_TOP_LEFT, 10, start_y + i * item_height);
-        
-        // 功率值标签
-        ui_power_values[i] = lv_label_create(ui_screen);
-        lv_label_set_text(ui_power_values[i], "0.00W");
-        lv_obj_set_style_text_color(ui_power_values[i], lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_align(ui_power_values[i], LV_ALIGN_TOP_LEFT, 45, start_y + i * item_height);
-        
-        
-        // 功率进度条 - 带渐变色
-        ui_power_bars[i] = lv_bar_create(ui_screen);
-        lv_obj_set_size(ui_power_bars[i], 200, 15);
-        lv_obj_align(ui_power_bars[i], LV_ALIGN_TOP_RIGHT, -10, start_y + i * item_height);
-        lv_bar_set_range(ui_power_bars[i], 0, 100);
-        lv_bar_set_value(ui_power_bars[i], 0, LV_ANIM_OFF);
-
-         // 设置不同区间的颜色
-        lv_obj_set_style_bg_color(ui_power_bars[i], lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
-        
-        // 设置进度条指示器颜色为绿黄色
-        lv_obj_set_style_bg_color(ui_power_bars[i], lv_color_hex(0x88FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-        
-        // 启用水平渐变
-        lv_obj_set_style_bg_grad_dir(ui_power_bars[i], LV_GRAD_DIR_HOR, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-        
-        // 设置渐变终止颜色为红黄色
-        lv_obj_set_style_bg_grad_color(ui_power_bars[i], lv_color_hex(0xFF8800), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    }
-    
-    // 总功率标签
-    ui_total_label = lv_label_create(ui_screen);
-    lv_label_set_text(ui_total_label, "Total: 0W");
-    lv_obj_set_style_text_color(ui_total_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_total_label, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(ui_total_label, LV_ALIGN_TOP_LEFT, 10, start_y + MAX_PORTS * item_height + 5);
-    
-    // 总功率进度条 - 带渐变色
-    ui_total_bar = lv_bar_create(ui_screen);
-    lv_obj_set_size(ui_total_bar, 200, 15);
-    lv_obj_align(ui_total_bar, LV_ALIGN_TOP_RIGHT, -10, start_y + MAX_PORTS * item_height + 5);
-    lv_bar_set_range(ui_total_bar, 0, 100);
-    lv_bar_set_value(ui_total_bar, 0, LV_ANIM_OFF);
-    
-    // 设置总功率进度条背景色
-    lv_obj_set_style_bg_color(ui_total_bar, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
-    
-    // 设置进度条指示器颜色为绿黄色
-    lv_obj_set_style_bg_color(ui_total_bar, lv_color_hex(0x88FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    
-    // 启用水平渐变
-    lv_obj_set_style_bg_grad_dir(ui_total_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    
-    // 设置渐变终止颜色为红黄色
-    lv_obj_set_style_bg_grad_color(ui_total_bar, lv_color_hex(0xFF8800), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    
-    // 加载屏幕
-    lv_scr_load(ui_screen);
-}
-
-// 创建扫描界面
-void PowerMonitor_CreateScanUI() {
-    if (scan_screen != nullptr) {
-        lv_obj_del(scan_screen);
-        scan_screen = nullptr;
-    }
-
-    // 创建扫描屏幕
-    scan_screen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(scan_screen, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
-    
-    // 创建标题
-    scan_label = lv_label_create(scan_screen);
-    lv_label_set_text(scan_label, "Scanning Devices...");
-    lv_obj_set_style_text_color(scan_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(scan_label, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);  // 使用24号字体
-    lv_obj_align(scan_label, LV_ALIGN_CENTER, 0, -30);  // 居中偏上显示
-    
-    // 创建状态文本
-    scan_status = lv_label_create(scan_screen);
-    lv_label_set_text(scan_status, "Searching for devices on network");
-    lv_obj_set_style_text_color(scan_status, lv_color_hex(0x00FF00), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(scan_status, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);  // 使用20号字体
-    lv_obj_set_style_text_align(scan_status, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);  // 文本居中对齐
-    lv_obj_set_width(scan_status, 240);  // 设置文本宽度以实现自动换行
-    lv_label_set_long_mode(scan_status, LV_LABEL_LONG_WRAP);  // 启用文本自动换行
-    lv_obj_align(scan_status, LV_ALIGN_CENTER, 0, 30);  // 居中偏下显示
-    
-    // 加载扫描屏幕
-    lv_scr_load(scan_screen);
-
-    scanUIActive = true;
-}
-
-// 更新扫描状态
-void PowerMonitor_UpdateScanStatus(const char* status) {
-    if (scan_status != nullptr) {
-        lv_label_set_text(scan_status, status);
-    }
-}
-
 // 监控任务
 void PowerMonitor_Task(void* parameter) {
     HTTPClient http;
@@ -286,6 +150,15 @@ void PowerMonitor_Task(void* parameter) {
     uint32_t lastScanTime = 0;
     const uint32_t SCAN_RETRY_INTERVAL = 30000;
     bool isScanning = false;
+    
+    // 创建扫描界面
+    DisplayManager::createScanScreen();
+    
+    // 在扫描过程中更新状态
+    DisplayManager::updateScanStatus("Searching for devices...");
+    
+    // 在扫描完成后
+    DisplayManager::deleteScanScreen();
     
     while (true) {
         bool currentWiFiState = WiFi.status() == WL_CONNECTED;
@@ -413,12 +286,6 @@ void PowerMonitor_Task(void* parameter) {
                 // 功率 = 电流(mA) * 电压(mV) / 1000000 (转换为W)
                 portInfos[i].power = (portInfos[i].current * portInfos[i].voltage) / 1000000.0f;
                 totalPower += portInfos[i].power;
-            }
-            
-            // 如果之前在扫描状态，切换回电源监控屏幕
-            if (isScanning) {
-                DisplayManager::createPowerMonitorScreen();
-                isScanning = false;
             }
             
             // 只在显示电源监控屏幕时更新UI
@@ -584,9 +451,4 @@ void PowerMonitor_UpdateUI() {
 // 获取总功率
 float PowerMonitor_GetTotalPower() {
     return totalPower;
-}
-
-// 检查扫描UI是否激活
-bool PowerMonitor_IsScanUIActive() {
-    return scanUIActive;
 }

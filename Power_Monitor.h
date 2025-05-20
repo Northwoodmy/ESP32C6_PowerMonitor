@@ -48,15 +48,6 @@ extern TaskHandle_t monitorTaskHandle;  // 监控任务句柄
 // 初始化功率监控
 void PowerMonitor_Init();
 
-// 创建功率显示界面
-void PowerMonitor_CreateUI();
-
-// 创建扫描界面
-void PowerMonitor_CreateScanUI();
-
-// 更新扫描状态
-void PowerMonitor_UpdateScanStatus(const char* status);
-
 // 监控任务（数据获取、解析和UI更新）
 void PowerMonitor_Task(void* parameter);
 
@@ -73,6 +64,5 @@ void PowerMonitor_UpdateUI();
 void PowerMonitor_UpdateWiFiStatus();
 
 float PowerMonitor_GetTotalPower();
-bool PowerMonitor_IsScanUIActive();
 
 #endif /* POWER_MONITOR_H */ 
