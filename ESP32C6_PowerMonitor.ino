@@ -175,7 +175,6 @@ void checkAndUpdateScreen() {
             // 检查是否达到切换条件
             else if (canSwitchMode && (currentMillis - lowPowerStartTime >= LOW_POWER_DELAY)) {
                 // 切换到时间显示
-                DisplayManager::deletePowerMonitorScreen();
                 DisplayManager::createTimeScreen();
                 DisplayManager::updateTimeScreen();
                 isInTimeMode = true;
@@ -191,7 +190,6 @@ void checkAndUpdateScreen() {
         
         // 如果当前是时间显示模式且可以切换，则切换到电源监控
         if (isInTimeMode && canSwitchMode) {
-            DisplayManager::deleteTimeScreen();
             DisplayManager::createPowerMonitorScreen();
             isInTimeMode = false;
             lastModeChangeTime = currentMillis;
