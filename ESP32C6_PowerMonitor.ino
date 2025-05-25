@@ -173,7 +173,6 @@ void checkAndUpdateScreen() {
             else if (currentMillis - lowPowerStartTime >= LOW_POWER_DELAY) {
                 printf("[Display] Switching to time mode after %.1f seconds of low power\n", (currentMillis - lowPowerStartTime) / 1000.0);
                 DisplayManager::deletePowerMonitorScreen();
-                vTaskDelay(pdMS_TO_TICKS(100));
                 DisplayManager::createTimeScreen();
                 DisplayManager::updateTimeScreen();
                 isInTimeMode = true;
@@ -193,7 +192,6 @@ void checkAndUpdateScreen() {
         if (isInTimeMode) {
             printf("[Display] High power detected (%.2fW), switching to power monitor mode\n", totalPower);
             DisplayManager::deleteTimeScreen();
-            vTaskDelay(pdMS_TO_TICKS(100));
             DisplayManager::createPowerMonitorScreen();
             DisplayManager::updatePowerMonitorScreen();
             isInTimeMode = false;

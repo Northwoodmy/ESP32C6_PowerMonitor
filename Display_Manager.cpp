@@ -554,24 +554,17 @@ bool DisplayManager::createPowerMonitorContent() {
     lv_bar_set_range(ui_total_bar, 0, 100);
     lv_bar_set_value(ui_total_bar, 0, LV_ANIM_OFF);
     
-    // 设置总功率进度条样式
-    // 设置背景样式
-    lv_obj_set_style_bg_color(ui_total_bar, lv_color_hex(0x222222), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(ui_total_bar, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_width(ui_total_bar, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui_total_bar, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
+    // 设置总功率进度条背景色
+    lv_obj_set_style_bg_color(ui_total_bar, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
     
-    // 设置指示器样式
-    lv_obj_set_style_bg_color(ui_total_bar, lv_color_hex(0xFF0000), LV_PART_INDICATOR | LV_STATE_DEFAULT);    // 红色开始
+    // 设置进度条指示器颜色为绿黄色
+    lv_obj_set_style_bg_color(ui_total_bar, lv_color_hex(0xf039fb), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    
+    // 启用水平渐变
     lv_obj_set_style_bg_grad_dir(ui_total_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_main_stop(ui_total_bar, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);      // 渐变开始位置
-    lv_obj_set_style_bg_grad_stop(ui_total_bar, 255, LV_PART_INDICATOR | LV_STATE_DEFAULT);    // 渐变结束位置
-    lv_obj_set_style_bg_grad_color(ui_total_bar, lv_color_hex(0xFF00FF), LV_PART_INDICATOR | LV_STATE_DEFAULT);  // 紫色结束
     
-    // 添加发光效果
-    lv_obj_set_style_shadow_color(ui_total_bar, lv_color_hex(0x0088FF), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(ui_total_bar, 10, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_spread(ui_total_bar, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    // 设置渐变终止颜色为红黄色
+    lv_obj_set_style_bg_grad_color(ui_total_bar, lv_color_hex(0xfb3a39), LV_PART_INDICATOR | LV_STATE_DEFAULT);
     
     return true;
 }
@@ -678,35 +671,8 @@ void DisplayManager::updatePowerMonitorScreen() {
                 int totalPercent = (int)((totalPower / MAX_POWER_WATTS) * 100);
                 if (totalPower > 0 && totalPercent == 0) totalPercent = 1;
                 if (totalPercent > 100) totalPercent = 100;
-                
-                // 根据功率值动态调整颜色
-                uint32_t startColor, endColor;
-                if (totalPercent < 30) {
-                    startColor = 0x00FF00;  // 绿色
-                    endColor = 0x88FF00;    // 黄绿色
-                } else if (totalPercent < 60) {
-                    startColor = 0xFFFF00;  // 黄色
-                    endColor = 0xFF8800;    // 橙色
-                } else if (totalPercent < 90) {
-                    startColor = 0xFF8800;  // 橙色
-                    endColor = 0xFF0000;    // 红色
-                } else {
-                    startColor = 0xFF0000;  // 红色
-                    endColor = 0xFF00FF;    // 紫色
-                }
-                
-                // 更新进度条颜色
-                lv_obj_set_style_bg_color(ui_total_bar, lv_color_hex(startColor), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-                lv_obj_set_style_bg_grad_color(ui_total_bar, lv_color_hex(endColor), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-                
-                // 更新阴影颜色
-                lv_obj_set_style_shadow_color(ui_total_bar, lv_color_hex(endColor), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-                
-                // 设置进度条值
+                 // 设置进度条值
                 lv_bar_set_value(ui_total_bar, totalPercent, LV_ANIM_ON);
-                
-                // 强制重绘
-                lv_obj_invalidate(ui_total_bar);
             }
         }
     }
