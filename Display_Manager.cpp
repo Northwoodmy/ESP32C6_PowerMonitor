@@ -46,6 +46,11 @@ lv_obj_t* DisplayManager::apContent = nullptr;
 
 SemaphoreHandle_t DisplayManager::lvgl_mutex = nullptr;
 
+// 添加静态变量记录上次时间
+static int lastHour = -1;
+static int lastMin = -1;
+static int lastSec = -1;
+
 void DisplayManager::init() {
     // 创建LVGL互斥锁
     lvgl_mutex = xSemaphoreCreateMutex();
@@ -436,6 +441,18 @@ void DisplayManager::updateTimeScreen() {
     struct tm timeinfo;
     time(&now);
     localtime_r(&now, &timeinfo);
+    
+    // 检查时间是否发生变化
+    if (timeinfo.tm_hour == lastHour && 
+        timeinfo.tm_min == lastMin && 
+        timeinfo.tm_sec == lastSec) {
+        return;  // 时间没有变化，不更新显示
+    }
+    
+    // 更新记录的时间
+    lastHour = timeinfo.tm_hour;
+    lastMin = timeinfo.tm_min;
+    lastSec = timeinfo.tm_sec;
     
     // 格式化时间字符串
     char timeStr[32];

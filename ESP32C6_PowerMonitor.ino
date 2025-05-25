@@ -57,6 +57,13 @@ const uint32_t RGB_TASK_STACK_SIZE = 2048;
 const UBaseType_t RGB_TASK_PRIORITY = 1;
 const unsigned long RGB_UPDATE_INTERVAL = 20;     // RGB更新间隔 (ms)
 
+// 添加状态变量
+static bool isInTimeMode = false;  // 是否处于时间显示模式
+static unsigned long lowPowerStartTime = 0;  // 低功率开始时间
+static unsigned long lastModeChangeTime = 0;  // 上次模式切换时间
+const unsigned long LOW_POWER_DELAY = 30000;  // 低功率切换延迟（30秒）
+const unsigned long MODE_SWITCH_DELAY = 10000;  // 模式切换最小间隔（10秒）
+
 // RGB控制任务
 void rgbControlTask(void* parameter) {
     printf("[RGB] Task started\n");
@@ -149,32 +156,49 @@ void checkAndUpdateScreen() {
     lastPowerCheckTime = currentMillis;
     
     float totalPower = PowerMonitor_GetTotalPower();
-    static bool lowPowerTimerStarted = false;
-    static unsigned long lowPowerStartTime = 0;
     
-    // 如果正在扫描，不切换到时间显示
+    // 如果正在扫描，不执行切换
     if (DisplayManager::isScanScreenActive()) {
-        lowPowerTimerStarted = false;
         return;
     }
     
+    // 检查是否可以切换模式（距离上次切换是否超过最小间隔）
+    bool canSwitchMode = (currentMillis - lastModeChangeTime) >= MODE_SWITCH_DELAY;
+    
     if (totalPower < 1.0) {
-        if (!lowPowerTimerStarted) {
-            lowPowerStartTime = currentMillis;
-            lowPowerTimerStarted = true;
-        } else if (currentMillis - lowPowerStartTime >= SCREEN_SWITCH_DELAY) {
-            // 如果低功率持续1分钟，切换到时间显示
-            if (!DisplayManager::isTimeScreenActive()) {
-                DisplayManager::createTimeScreen();
+        // 低功率状态
+        if (!isInTimeMode) {
+            // 如果还没开始计时，开始计时
+            if (lowPowerStartTime == 0) {
+                lowPowerStartTime = currentMillis;
             }
-            DisplayManager::updateTimeScreen();  // 更新时间显示
+            // 检查是否达到切换条件
+            else if (canSwitchMode && (currentMillis - lowPowerStartTime >= LOW_POWER_DELAY)) {
+                // 切换到时间显示
+                DisplayManager::deletePowerMonitorScreen();
+                DisplayManager::createTimeScreen();
+                DisplayManager::updateTimeScreen();
+                isInTimeMode = true;
+                lastModeChangeTime = currentMillis;
+            }
+        } else {
+            // 在时间显示模式下持续更新时间
+            DisplayManager::updateTimeScreen();
         }
     } else if (totalPower > 2.0) {
-        lowPowerTimerStarted = false;
-        if (DisplayManager::isTimeScreenActive()) {
+        // 高功率状态，重置低功率计时
+        lowPowerStartTime = 0;
+        
+        // 如果当前是时间显示模式且可以切换，则切换到电源监控
+        if (isInTimeMode && canSwitchMode) {
             DisplayManager::deleteTimeScreen();
-            DisplayManager::createPowerMonitorScreen();  // 切换回电源监控屏幕
+            DisplayManager::createPowerMonitorScreen();
+            isInTimeMode = false;
+            lastModeChangeTime = currentMillis;
         }
+    } else {
+        // 功率在1-2W之间，只重置低功率计时
+        lowPowerStartTime = 0;
     }
 }
 
