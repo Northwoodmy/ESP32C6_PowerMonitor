@@ -258,5 +258,5 @@ void loop()
     }
     
     // 给其他任务一些执行时间
-    vTaskDelay(pdMS_TO_TICKS(5));  // 短暂延时，防止看门狗复位
+    vTaskDelay(pdMS_TO_TICKS(20));  // 短暂延时，防止看门狗复位
 }
