@@ -13,6 +13,7 @@ lv_obj_t* DisplayManager::wifiErrorContainer = nullptr;
 // 时间显示UI组件
 lv_obj_t* DisplayManager::timeContainer = nullptr;
 lv_obj_t* DisplayManager::timeLabel = nullptr;
+lv_obj_t* DisplayManager::dateLabel = nullptr;
 
 // 电源监控UI组件
 lv_obj_t* DisplayManager::powerMonitorContainer = nullptr;
@@ -132,6 +133,54 @@ void DisplayManager::createTimeScreen() {
         lv_obj_set_style_bg_color(timeContainer, lv_color_black(), 0);
         lv_obj_set_style_border_width(timeContainer, 0, 0);
         
+        // 创建背景图案容器
+        lv_obj_t* bgContainer = lv_obj_create(timeContainer);
+        lv_obj_set_size(bgContainer, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_bg_color(bgContainer, lv_color_black(), 0);
+        lv_obj_set_style_border_width(bgContainer, 0, 0);
+        lv_obj_clear_flag(bgContainer, LV_OBJ_FLAG_SCROLLABLE);
+
+        // 创建外部装饰圆环
+        lv_obj_t* outerCircle = lv_obj_create(bgContainer);
+        lv_obj_set_size(outerCircle, 150, 150);
+        lv_obj_set_style_radius(outerCircle, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(outerCircle, lv_color_hex(0x111111), 0);
+        lv_obj_set_style_border_width(outerCircle, 1, 0);
+        lv_obj_set_style_border_color(outerCircle, lv_color_hex(0x333333), 0);
+        lv_obj_align(outerCircle, LV_ALIGN_CENTER, 0, 0);
+        
+        // 创建中间圆环
+        lv_obj_t* circle1 = lv_obj_create(bgContainer);
+        lv_obj_set_size(circle1, 120, 120);
+        lv_obj_set_style_radius(circle1, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(circle1, lv_color_hex(0x222222), 0);
+        lv_obj_set_style_border_width(circle1, 2, 0);
+        lv_obj_set_style_border_color(circle1, lv_color_hex(0x444444), 0);
+        lv_obj_align(circle1, LV_ALIGN_CENTER, 0, 0);
+        
+        // 创建内部圆环
+        lv_obj_t* circle2 = lv_obj_create(bgContainer);
+        lv_obj_set_size(circle2, 100, 100);
+        lv_obj_set_style_radius(circle2, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(circle2, lv_color_hex(0x111111), 0);
+        lv_obj_set_style_border_width(circle2, 1, 0);
+        lv_obj_set_style_border_color(circle2, lv_color_hex(0x333333), 0);
+        lv_obj_align(circle2, LV_ALIGN_CENTER, 0, 0);
+
+        // 创建装饰性弧线
+        for(int i = 0; i < 4; i++) {
+            lv_obj_t* arc = lv_arc_create(bgContainer);
+            lv_obj_set_size(arc, 160, 160);
+            lv_arc_set_rotation(arc, i * 90);
+            lv_arc_set_bg_angles(arc, 0, 60);
+            lv_arc_set_angles(arc, 0, 60);
+            lv_obj_set_style_arc_color(arc, lv_color_hex(0x222222), LV_PART_MAIN);
+            lv_obj_set_style_arc_color(arc, lv_color_hex(0x0066FF), LV_PART_INDICATOR);
+            lv_obj_set_style_arc_width(arc, 2, LV_PART_MAIN);
+            lv_obj_set_style_arc_width(arc, 2, LV_PART_INDICATOR);
+            lv_obj_align(arc, LV_ALIGN_CENTER, 0, 0);
+        }
+        
         // 创建时间标签
         timeLabel = lv_label_create(timeContainer);
         lv_obj_set_style_text_color(timeLabel, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
@@ -139,6 +188,41 @@ void DisplayManager::createTimeScreen() {
         lv_obj_set_style_text_align(timeLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_set_width(timeLabel, LV_PCT(100));
         lv_obj_align(timeLabel, LV_ALIGN_CENTER, 0, 0);
+
+        // 创建日期标签
+        dateLabel = lv_label_create(timeContainer);
+        lv_obj_set_style_text_color(dateLabel, lv_color_hex(0x888888), LV_PART_MAIN);
+        lv_obj_set_style_text_font(dateLabel, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_align(dateLabel, LV_ALIGN_CENTER, 0, 40);
+        lv_label_set_text(dateLabel, ""); // 设置初始空文本
+        
+        // 创建装饰性点
+        for(int i = 0; i < 12; i++) {
+            // 主要刻度点
+            lv_obj_t* dot = lv_obj_create(bgContainer);
+            lv_obj_set_size(dot, i % 3 == 0 ? 6 : 4, i % 3 == 0 ? 6 : 4);
+            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(dot, i % 3 == 0 ? lv_color_hex(0x0066FF) : lv_color_hex(0x666666), 0);
+            lv_obj_set_style_border_width(dot, 0, 0);
+            
+            float angle = i * 30 * 3.14159f / 180;
+            int x = 70 * cos(angle);
+            int y = 70 * sin(angle);
+            lv_obj_align(dot, LV_ALIGN_CENTER, x, y);
+            
+            // 外圈装饰点
+            if(i % 3 == 0) {
+                lv_obj_t* outerDot = lv_obj_create(bgContainer);
+                lv_obj_set_size(outerDot, 3, 3);
+                lv_obj_set_style_radius(outerDot, LV_RADIUS_CIRCLE, 0);
+                lv_obj_set_style_bg_color(outerDot, lv_color_hex(0x0066FF), 0);
+                lv_obj_set_style_border_width(outerDot, 0, 0);
+                
+                x = 85 * cos(angle);
+                y = 85 * sin(angle);
+                lv_obj_align(outerDot, LV_ALIGN_CENTER, x, y);
+            }
+        }
     }
     
     // 显示时间容器
@@ -353,15 +437,25 @@ void DisplayManager::updateTimeScreen() {
     time(&now);
     localtime_r(&now, &timeinfo);
     
-    // 格式化时间字符串，使用更大的间距
+    // 格式化时间字符串
     char timeStr[32];
     snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", 
              timeinfo.tm_hour,
              timeinfo.tm_min, 
              timeinfo.tm_sec);
     
-    // 更新显示
+    // 更新时间显示
     lv_label_set_text(timeLabel, timeStr);
+
+    // 更新日期显示
+    if (dateLabel != nullptr) {
+        char dateStr[32];
+        snprintf(dateStr, sizeof(dateStr), "%04d-%02d-%02d",
+                timeinfo.tm_year + 1900,
+                timeinfo.tm_mon + 1,
+                timeinfo.tm_mday);
+        lv_label_set_text(dateLabel, dateStr);
+    }
 }
 
 bool DisplayManager::createPowerMonitorContent() {

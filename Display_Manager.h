@@ -56,6 +56,7 @@ private:
     // 时间显示UI组件
     static lv_obj_t* timeContainer;
     static lv_obj_t* timeLabel;
+    static lv_obj_t* dateLabel;  // 添加日期标签
     
     // 电源监控UI组件
     static lv_obj_t* powerMonitorContainer;
