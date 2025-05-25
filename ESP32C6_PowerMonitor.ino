@@ -99,28 +99,28 @@ void rgbControlTask(void* parameter) {
 // 系统初始化函数
 bool initializeSystem() {
     printf("\n[System] Starting system initialization...\n");
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     // 初始化显示相关组件
     printf("[Display] Initializing display components...\n");
     LCD_Init();  // 直接调用，不检查返回值
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     Set_Backlight(40);
-    delay(50);
+    vTaskDelay(pdMS_TO_TICKS(50));
     
     Lvgl_Init();  // 直接调用，不检查返回值
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     DisplayManager::init();
     displayInitialized = true;
     printf("[Display] Display initialization complete\n");
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     // 初始化配置管理器
     printf("[Config] Starting configuration manager...\n");
     ConfigManager::begin();
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     // 初始化RGB灯
     printf("[RGB] Initializing RGB lamp...\n");
@@ -143,7 +143,7 @@ bool initializeSystem() {
         &rgbTaskHandle           // 任务句柄
     );
     
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     printf("[System] System initialization complete\n");
     return true;
 }
@@ -205,14 +205,14 @@ void checkAndUpdateScreen() {
 void setup()
 {
     // 等待系统稳定
-    delay(1000);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     
     // 执行系统初始化
     systemInitialized = initializeSystem();
     
     if (!systemInitialized) {
         printf("[System] System initialization failed, restarting...\n");
-        delay(3000);
+        vTaskDelay(pdMS_TO_TICKS(3000));
         ESP.restart();
     }
 }
@@ -221,7 +221,7 @@ void loop()
 {
     // 如果系统未初始化，不执行任何操作
     if (!systemInitialized) {
-        delay(1000);
+        vTaskDelay(pdMS_TO_TICKS(1000));
         return;
     }
 
@@ -258,5 +258,5 @@ void loop()
     }
     
     // 给其他任务一些执行时间
-    delay(5);  // 短暂延时，防止看门狗复位
+    vTaskDelay(pdMS_TO_TICKS(5));  // 短暂延时，防止看门狗复位
 }
