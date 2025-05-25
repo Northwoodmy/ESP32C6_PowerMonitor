@@ -3,6 +3,8 @@
 #include "lvgl.h"
 #include "Power_Monitor.h"
 #include "Display_ST7789.h"  // 添加显示器控制头文件
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 class DisplayManager {
 public:
@@ -38,21 +40,25 @@ public:
     static const uint8_t BRIGHTNESS_DIM = 8;      // 时间显示时的低亮度
     
 private:
-    static lv_obj_t* apScreen;
-    static lv_obj_t* monitorScreen;
+    static lv_obj_t* mainScreen;  // 主屏幕
     static lv_obj_t* currentScreen;
-    static lv_obj_t* wifiErrorScreen;
-    static lv_obj_t* powerMonitorScreen;
-    static lv_obj_t* scanScreen;  // 扫描界面
-    static bool apScreenActive;
-    static bool wifiErrorScreenActive;
-    static bool timeScreenActive;
-    static bool powerMonitorScreenActive;
-    static bool scanScreenActive;  // 扫描界面状态
+    
+    // AP配置UI组件
+    static lv_obj_t* apContainer;
+    static lv_obj_t* apTitle;
+    static lv_obj_t* apContent;
+    
+    // WiFi错误UI组件
+    static lv_obj_t* wifiErrorTitle;
+    static lv_obj_t* wifiErrorMessage;
+    static lv_obj_t* wifiErrorContainer;
+    
+    // 时间显示UI组件
+    static lv_obj_t* timeContainer;
     static lv_obj_t* timeLabel;
-    static lv_obj_t* scanLabel;    // 扫描标题
-    static lv_obj_t* scanStatus;   // 扫描状态
-    static unsigned long screenSwitchTime;  // 用于记录屏幕切换时间
+    
+    // 电源监控UI组件
+    static lv_obj_t* powerMonitorContainer;
     static lv_obj_t* ui_title;
     static lv_obj_t* ui_total_label;
     static lv_obj_t* ui_port_labels[MAX_PORTS];
@@ -60,8 +66,32 @@ private:
     static lv_obj_t* ui_power_bars[MAX_PORTS];
     static lv_obj_t* ui_total_bar;
     static lv_obj_t* ui_wifi_status;
-    static bool dataError;  // 添加数据错误标志
+    
+    // 扫描界面UI组件
+    static lv_obj_t* scanContainer;
+    static lv_obj_t* scanLabel;
+    static lv_obj_t* scanStatus;
+    
+    // 状态标志
+    static bool apScreenActive;
+    static bool wifiErrorScreenActive;
+    static bool timeScreenActive;
+    static bool powerMonitorScreenActive;
+    static bool scanScreenActive;
+    static bool dataError;
+    static unsigned long screenSwitchTime;
+    
+    static SemaphoreHandle_t lvgl_mutex;  // LVGL互斥锁
+    static const TickType_t LVGL_LOCK_TIMEOUT = portMAX_DELAY; // 永久等待
+    
+    // 私有方法
     static void createAPScreenContent(const char* ssid, const char* ip);
     static bool createPowerMonitorContent();
-    static void setScreenBrightness(uint8_t brightness);  // 添加亮度控制函数
+    static void setScreenBrightness(uint8_t brightness);
+    static void hideAllContainers();  // 新增：隐藏所有容器
+    static void createMainScreen();    // 新增：创建主屏幕
+    
+    // 互斥锁相关
+    static void takeLvglLock();  // 改为void，因为会一直等待直到获取锁
+    static void giveLvglLock();
 }; 

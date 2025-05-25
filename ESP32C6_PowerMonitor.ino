@@ -47,7 +47,7 @@ bool powerMonitorInitialized = false;
 bool lastRGBState = false;
 
 // 屏幕切换相关
-const unsigned long SCREEN_SWITCH_DELAY = 60000;  // 1分钟延迟
+const unsigned long SCREEN_SWITCH_DELAY = 30000;  // 30秒延迟
 unsigned long lastPowerCheckTime = 0;
 const unsigned long POWER_CHECK_INTERVAL = 1000;  // 每秒检查一次功率
 
@@ -151,6 +151,12 @@ void checkAndUpdateScreen() {
     float totalPower = PowerMonitor_GetTotalPower();
     static bool lowPowerTimerStarted = false;
     static unsigned long lowPowerStartTime = 0;
+    
+    // 如果正在扫描，不切换到时间显示
+    if (DisplayManager::isScanScreenActive()) {
+        lowPowerTimerStarted = false;
+        return;
+    }
     
     if (totalPower < 1.0) {
         if (!lowPowerTimerStarted) {

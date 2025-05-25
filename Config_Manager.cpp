@@ -678,7 +678,7 @@ String ConfigManager::extractIPFromUrl(const String& url) {
 // 获取监控服务器地址
 String ConfigManager::getMonitorUrl() {
     String url = preferences.getString(NVS_MONITOR_URL_KEY, DEFAULT_MONITOR_URL);
-    printf("[Config] Current monitor URL: %s\n", url.c_str());
+    //printf("[Config] Current monitor URL: %s\n", url.c_str());
     return url;
 }
 
