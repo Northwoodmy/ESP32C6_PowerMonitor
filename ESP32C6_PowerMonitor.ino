@@ -73,6 +73,12 @@ const int REFRESH_INTERVAL = 500;   // 刷新间隔 (ms)
 // 任务计时器
 const unsigned long WIFI_CHECK_INTERVAL = 1000;   // WiFi状态检查间隔 (ms)
 
+// 内存监控任务相关
+TaskHandle_t memoryTaskHandle = NULL;
+const uint32_t MEMORY_TASK_STACK_SIZE = 2048;
+const UBaseType_t MEMORY_TASK_PRIORITY = 1;
+const unsigned long MEMORY_CHECK_INTERVAL = 2000;  // 2秒检查一次内存
+
 // RGB控制任务
 void rgbControlTask(void* parameter) {
     printf("[RGB] Task started\n");
@@ -225,6 +231,88 @@ void lvglTask(void* parameter) {
     }
 }
 
+// 内存监控任务
+void memoryMonitorTask(void* parameter) {
+    printf("[Memory] Task started\n");
+    
+    // 保存上一次的内存状态
+    uint32_t lastFreeHeap = 0;
+    uint32_t lastTotalHeap = 0;
+    uint32_t lastMinFreeHeap = 0;
+    uint32_t lastMaxAllocHeap = 0;
+    float lastHeapUsagePercent = 0;
+    
+    // 首次运行标志
+    bool firstRun = true;
+    
+    while(1) {
+        // 获取当前内存信息
+        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t totalHeap = ESP.getHeapSize();
+        uint32_t minFreeHeap = ESP.getMinFreeHeap();
+        uint32_t maxAllocHeap = ESP.getMaxAllocHeap();
+        float heapUsagePercent = ((float)(totalHeap - freeHeap) / totalHeap) * 100;
+        
+        // 检查是否有变化（考虑1KB的误差范围）
+        bool hasChanged = firstRun ||
+                         abs((int32_t)freeHeap - (int32_t)lastFreeHeap) > 1024 ||
+                         abs((int32_t)totalHeap - (int32_t)lastTotalHeap) > 1024 ||
+                         abs((int32_t)minFreeHeap - (int32_t)lastMinFreeHeap) > 1024 ||
+                         abs((int32_t)maxAllocHeap - (int32_t)lastMaxAllocHeap) > 1024 ||
+                         abs(heapUsagePercent - lastHeapUsagePercent) > 1.0;
+        
+        // 只在首次运行或有显著变化时输出
+        if (hasChanged) {
+            // 使用分隔线使输出更清晰
+            printf("\n----------------------------------------\n");
+            printf("系统内存状态更新:\n");
+            printf("----------------------------------------\n");
+            
+            // 只在相关值发生变化时输出对应信息
+            if (firstRun || abs((int32_t)totalHeap - (int32_t)lastTotalHeap) > 1024) {
+                printf("总内存:     %7u 字节 (%.1f KB)\n", totalHeap, totalHeap/1024.0);
+            }
+            
+            if (firstRun || abs((int32_t)freeHeap - (int32_t)lastFreeHeap) > 1024) {
+                printf("可用内存:   %7u 字节 (%.1f KB)\n", freeHeap, freeHeap/1024.0);
+                printf("已用内存:   %7u 字节 (%.1f KB)\n", totalHeap - freeHeap, (totalHeap - freeHeap)/1024.0);
+            }
+            
+            if (firstRun || abs(heapUsagePercent - lastHeapUsagePercent) > 1.0) {
+                printf("内存使用率: %7.1f%%\n", heapUsagePercent);
+            }
+            
+            if (firstRun || abs((int32_t)maxAllocHeap - (int32_t)lastMaxAllocHeap) > 1024) {
+                printf("最大可分配: %7u 字节 (%.1f KB)\n", maxAllocHeap, maxAllocHeap/1024.0);
+            }
+            
+            if (firstRun || abs((int32_t)minFreeHeap - (int32_t)lastMinFreeHeap) > 1024) {
+                printf("历史最低:   %7u 字节 (%.1f KB)\n", minFreeHeap, minFreeHeap/1024.0);
+            }
+            
+            printf("----------------------------------------\n");
+            
+            // 添加内存使用预警
+            if (heapUsagePercent > 80) {
+                printf("⚠️ 警告: 内存使用率超过80%%，请注意！\n");
+            } else if (freeHeap < 10240) { // 小于10KB时警告
+                printf("⚠️ 警告: 可用内存低于10KB，请注意！\n");
+            }
+            
+            // 更新上一次的状态
+            lastFreeHeap = freeHeap;
+            lastTotalHeap = totalHeap;
+            lastMinFreeHeap = minFreeHeap;
+            lastMaxAllocHeap = maxAllocHeap;
+            lastHeapUsagePercent = heapUsagePercent;
+            firstRun = false;
+        }
+        
+        // 延时2秒
+        vTaskDelay(pdMS_TO_TICKS(MEMORY_CHECK_INTERVAL));
+    }
+}
+
 bool initializeSystem() {
     printf("\n[System] Starting system initialization...\n");
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -289,6 +377,16 @@ bool initializeSystem() {
         NULL,                  // 任务参数
         LVGL_TASK_PRIORITY,    // 任务优先级
         &lvglTaskHandle        // 任务句柄
+    );
+
+    // 创建内存监控任务
+    xTaskCreate(
+        memoryMonitorTask,         // 任务函数
+        "MemoryMonitorTask",       // 任务名称
+        MEMORY_TASK_STACK_SIZE,    // 堆栈大小
+        NULL,                      // 任务参数
+        MEMORY_TASK_PRIORITY,      // 任务优先级
+        &memoryTaskHandle          // 任务句柄
     );
     
     vTaskDelay(pdMS_TO_TICKS(100));
