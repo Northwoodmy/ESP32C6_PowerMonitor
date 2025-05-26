@@ -708,4 +708,10 @@ void DisplayManager::giveLvglLock() {
     } else {
         printf("[Display] Warning: Attempting to give uninitialized mutex\n");
     }
+}
+
+void DisplayManager::handleLvglTask() {
+    takeLvglLock();
+    lv_timer_handler();
+    giveLvglLock();
 } 

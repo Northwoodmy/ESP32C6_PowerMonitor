@@ -31,14 +31,6 @@
 #include "Config_Manager.h"
 #include "Display_Manager.h"
 
-// 电源监控配置
-const int MAX_POWER_WATTS = 160;    // 最大总功率 160W
-const int MAX_PORT_WATTS = 140;     // 每个端口最大功率 140W
-const int REFRESH_INTERVAL = 500;   // 刷新间隔 (ms)
-
-// 任务计时器
-const unsigned long WIFI_CHECK_INTERVAL = 1000;   // WiFi状态检查间隔 (ms)
-
 // 系统状态
 bool systemInitialized = false;
 bool displayInitialized = false;
@@ -66,6 +58,20 @@ static bool isInTimeMode = false;  // 是否处于时间显示模式
 static unsigned long lowPowerStartTime = 0;  // 低功率开始时间
 static bool rgbTempDisabled = false;  // 用于跟踪RGB灯是否被临时禁用
 const unsigned long LOW_POWER_DELAY = 30000;  // 低功率切换延迟（30秒）
+
+// LVGL任务相关
+TaskHandle_t lvglTaskHandle = NULL;
+const uint32_t LVGL_TASK_STACK_SIZE = 16384;  // 增加到16KB
+const UBaseType_t LVGL_TASK_PRIORITY = 3;     // 提高优先级
+const unsigned long LVGL_UPDATE_INTERVAL = 20;  // 20ms 更新间隔
+
+// 电源监控配置
+const int MAX_POWER_WATTS = 160;    // 最大总功率 160W
+const int MAX_PORT_WATTS = 140;     // 每个端口最大功率 140W
+const int REFRESH_INTERVAL = 500;   // 刷新间隔 (ms)
+
+// 任务计时器
+const unsigned long WIFI_CHECK_INTERVAL = 1000;   // WiFi状态检查间隔 (ms)
 
 // RGB控制任务
 void rgbControlTask(void* parameter) {
@@ -198,7 +204,27 @@ void screenWifiMonitorTask(void* parameter) {
     }
 }
 
-// 系统初始化函数
+// LVGL处理任务
+void lvglTask(void* parameter) {
+    printf("[LVGL] Task started\n");
+    unsigned long lastUpdate = 0;
+    
+    // 等待显示初始化完成
+    while (!displayInitialized) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    
+    while(1) {
+        unsigned long currentMillis = millis();
+        if (currentMillis - lastUpdate >= LVGL_UPDATE_INTERVAL) {
+            DisplayManager::handleLvglTask();
+            lastUpdate = currentMillis;
+        }
+        // 增加任务延时
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+}
+
 bool initializeSystem() {
     printf("\n[System] Starting system initialization...\n");
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -255,6 +281,16 @@ bool initializeSystem() {
         &screenWifiTaskHandle       // 任务句柄
     );
     
+    // 创建LVGL处理任务
+    xTaskCreate(
+        lvglTask,               // 任务函数
+        "LVGLTask",            // 任务名称
+        LVGL_TASK_STACK_SIZE,  // 堆栈大小
+        NULL,                  // 任务参数
+        LVGL_TASK_PRIORITY,    // 任务优先级
+        &lvglTaskHandle        // 任务句柄
+    );
+    
     vTaskDelay(pdMS_TO_TICKS(100));
     printf("[System] System initialization complete\n");
     return true;
@@ -275,21 +311,8 @@ void setup()
     }
 }
 
-void Timer_Loop()
+void loop()
 {
-    // 如果系统未初始化，不执行任何操作
-    if (!systemInitialized) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        return;
-    }
-    
-    // 处理LVGL任务
-    if (displayInitialized) {
-        DisplayManager::takeLvglLock();
-        lv_timer_handler();
-        DisplayManager::giveLvglLock();
-    }
-    
-    // 给其他任务一些执行时间
-    vTaskDelay(pdMS_TO_TICKS(20));  // 短暂延时，防止看门狗复位
+    // 主循环中不再处理LVGL任务，改为短暂延时
+    vTaskDelay(pdMS_TO_TICKS(100));
 }

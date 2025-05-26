@@ -35,6 +35,9 @@ public:
     static bool isScanScreenActive();
     static void updateScanStatus(const char* status);
     
+    // LVGL 任务处理
+    static void handleLvglTask();
+    
     // 屏幕亮度设置
     static const uint8_t BRIGHTNESS_NORMAL = 42;  // 正常亮度
     static const uint8_t BRIGHTNESS_DIM = 8;      // 时间显示时的低亮度
