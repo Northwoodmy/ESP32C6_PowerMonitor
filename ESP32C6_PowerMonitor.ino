@@ -37,7 +37,6 @@ const int MAX_PORT_WATTS = 140;     // 每个端口最大功率 140W
 const int REFRESH_INTERVAL = 500;   // 刷新间隔 (ms)
 
 // 任务计时器
-unsigned long lastWiFiCheck = 0;
 const unsigned long WIFI_CHECK_INTERVAL = 1000;   // WiFi状态检查间隔 (ms)
 
 // 系统状态
@@ -48,7 +47,6 @@ bool lastRGBState = false;
 
 // 屏幕切换相关
 const unsigned long SCREEN_SWITCH_DELAY = 30000;  // 30秒延迟
-unsigned long lastPowerCheckTime = 0;
 const unsigned long POWER_CHECK_INTERVAL = 1000;  // 每秒检查一次功率
 
 // RGB控制任务相关
@@ -56,6 +54,12 @@ TaskHandle_t rgbTaskHandle = NULL;
 const uint32_t RGB_TASK_STACK_SIZE = 2048;
 const UBaseType_t RGB_TASK_PRIORITY = 1;
 const unsigned long RGB_UPDATE_INTERVAL = 20;     // RGB更新间隔 (ms)
+
+// 屏幕和WiFi监控任务相关
+TaskHandle_t screenWifiTaskHandle = NULL;
+const uint32_t SCREEN_WIFI_TASK_STACK_SIZE = 4096;
+const UBaseType_t SCREEN_WIFI_TASK_PRIORITY = 2;
+const unsigned long SCREEN_WIFI_UPDATE_INTERVAL = 50;  // 屏幕和WiFi检查间隔 (ms)
 
 // 添加状态变量
 static bool isInTimeMode = false;  // 是否处于时间显示模式
@@ -91,7 +95,106 @@ void rgbControlTask(void* parameter) {
         }
         
         // 任务延时
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+// 屏幕和WiFi监控任务
+void screenWifiMonitorTask(void* parameter) {
+    printf("[ScreenWiFi] Task started\n");
+    unsigned long lastWiFiCheck = 0;
+    unsigned long lastPowerCheckTime = 0;
+    
+    while(1) {
+        unsigned long currentMillis = millis();
+        
+        // 检查并更新屏幕显示
+        if (powerMonitorInitialized && (currentMillis - lastPowerCheckTime >= POWER_CHECK_INTERVAL)) {
+            lastPowerCheckTime = currentMillis;
+            
+            float totalPower = PowerMonitor_GetTotalPower();
+            
+            // 如果正在扫描，不执行切换
+            if (!DisplayManager::isScanScreenActive()) {
+                if (totalPower < 1.0) {
+                    // 低功率状态
+                    if (!isInTimeMode) {
+                        // 如果还没开始计时，开始计时
+                        if (lowPowerStartTime == 0) {
+                            lowPowerStartTime = currentMillis;
+                            printf("[Display] Low power detected (%.2fW), starting timer for time mode\n", totalPower);
+                        }
+                        // 检查是否达到切换条件（30秒）
+                        else if (currentMillis - lowPowerStartTime >= LOW_POWER_DELAY) {
+                            printf("[Display] Switching to time mode after %.1f seconds of low power\n", (currentMillis - lowPowerStartTime) / 1000.0);
+                            DisplayManager::deletePowerMonitorScreen();
+                            DisplayManager::createTimeScreen();
+                            DisplayManager::updateTimeScreen();
+                            isInTimeMode = true;
+                            // 临时关闭RGB灯
+                            if (!rgbTempDisabled && ConfigManager::isRGBEnabled()) {
+                                printf("[RGB] Temporarily disabling RGB in time mode\n");
+                                rgbTempDisabled = true;
+                                RGB_Lamp_Off();
+                            }
+                        }
+                    } else {
+                        // 在时间显示模式下持续更新时间
+                        DisplayManager::updateTimeScreen();
+                    }
+                } else if (totalPower >= 2.0) {
+                    // 高功率状态，立即切换到电源监控
+                    if (isInTimeMode) {
+                        printf("[Display] High power detected (%.2fW), switching to power monitor mode\n", totalPower);
+                        DisplayManager::deleteTimeScreen();
+                        DisplayManager::createPowerMonitorScreen();
+                        DisplayManager::updatePowerMonitorScreen();
+                        isInTimeMode = false;
+                        
+                        // 恢复RGB灯到配置状态
+                        if (rgbTempDisabled) {
+                            rgbTempDisabled = false;
+                            if (ConfigManager::isRGBEnabled()) {
+                                printf("[RGB] Restoring RGB state in power monitor mode\n");
+                            }
+                        }
+                    }
+                    // 重置低功率计时器
+                    lowPowerStartTime = 0;
+                } else {
+                    // 功率在1-2W之间，保持当前显示状态，只重置低功率计时
+                    if (lowPowerStartTime != 0) {
+                        printf("[Display] Power in middle range (%.2fW), resetting low power timer\n", totalPower);
+                        lowPowerStartTime = 0;
+                    }
+                }
+            }
+        }
+        
+        // 定期检查WiFi状态
+        if (currentMillis - lastWiFiCheck >= WIFI_CHECK_INTERVAL) {
+            bool wifiReady = ConfigManager::isConfigured() && ConfigManager::isConnected();
+            
+            if (wifiReady && !powerMonitorInitialized) {
+                printf("[Power] Initializing power monitor...\n");
+                PowerMonitor_Init();
+                powerMonitorInitialized = true;
+                printf("[Power] Power monitor initialized successfully\n");
+                printf("[WiFi] Connected to: %s\n", ConfigManager::getSSID().c_str());
+                printf("[WiFi] IP address: %s\n", WiFi.localIP().toString().c_str());
+            } else if (!wifiReady && powerMonitorInitialized) {
+                powerMonitorInitialized = false;
+                printf("[System] Power monitor stopped due to WiFi disconnection\n");
+                if (ConfigManager::isConfigured()) {
+                    printf("[WiFi] Connection lost, will retry automatically\n");
+                }
+            }
+            
+            lastWiFiCheck = currentMillis;
+        }
+        
+        // 任务延时
+        vTaskDelay(pdMS_TO_TICKS(SCREEN_WIFI_UPDATE_INTERVAL));
     }
 }
 
@@ -142,77 +245,19 @@ bool initializeSystem() {
         &rgbTaskHandle           // 任务句柄
     );
     
+    // 创建屏幕和WiFi监控任务
+    xTaskCreate(
+        screenWifiMonitorTask,      // 任务函数
+        "ScreenWiFiMonitorTask",    // 任务名称
+        SCREEN_WIFI_TASK_STACK_SIZE, // 堆栈大小
+        NULL,                       // 任务参数
+        SCREEN_WIFI_TASK_PRIORITY,  // 任务优先级
+        &screenWifiTaskHandle       // 任务句柄
+    );
+    
     vTaskDelay(pdMS_TO_TICKS(100));
     printf("[System] System initialization complete\n");
     return true;
-}
-
-void checkAndUpdateScreen() {
-    if (!powerMonitorInitialized) return;
-    
-    unsigned long currentMillis = millis();
-    if (currentMillis - lastPowerCheckTime < POWER_CHECK_INTERVAL) return;
-    lastPowerCheckTime = currentMillis;
-    
-    float totalPower = PowerMonitor_GetTotalPower();
-    
-    // 如果正在扫描，不执行切换
-    if (DisplayManager::isScanScreenActive()) {
-        return;
-    }
-    
-    if (totalPower < 1.0) {
-        // 低功率状态
-        if (!isInTimeMode) {
-            // 如果还没开始计时，开始计时
-            if (lowPowerStartTime == 0) {
-                lowPowerStartTime = currentMillis;
-                printf("[Display] Low power detected (%.2fW), starting timer for time mode\n", totalPower);
-            }
-            // 检查是否达到切换条件（30秒）
-            else if (currentMillis - lowPowerStartTime >= LOW_POWER_DELAY) {
-                printf("[Display] Switching to time mode after %.1f seconds of low power\n", (currentMillis - lowPowerStartTime) / 1000.0);
-                DisplayManager::deletePowerMonitorScreen();
-                DisplayManager::createTimeScreen();
-                DisplayManager::updateTimeScreen();
-                isInTimeMode = true;
-                // 临时关闭RGB灯
-                if (!rgbTempDisabled && ConfigManager::isRGBEnabled()) {
-                    printf("[RGB] Temporarily disabling RGB in time mode\n");
-                    rgbTempDisabled = true;
-                    RGB_Lamp_Off();
-                }
-            }
-        } else {
-            // 在时间显示模式下持续更新时间
-            DisplayManager::updateTimeScreen();
-        }
-    } else if (totalPower >= 2.0) {
-        // 高功率状态，立即切换到电源监控
-        if (isInTimeMode) {
-            printf("[Display] High power detected (%.2fW), switching to power monitor mode\n", totalPower);
-            DisplayManager::deleteTimeScreen();
-            DisplayManager::createPowerMonitorScreen();
-            DisplayManager::updatePowerMonitorScreen();
-            isInTimeMode = false;
-            
-            // 恢复RGB灯到配置状态
-            if (rgbTempDisabled) {
-                rgbTempDisabled = false;
-                if (ConfigManager::isRGBEnabled()) {
-                    printf("[RGB] Restoring RGB state in power monitor mode\n");
-                }
-            }
-        }
-        // 重置低功率计时器
-        lowPowerStartTime = 0;
-    } else {
-        // 功率在1-2W之间，保持当前显示状态，只重置低功率计时
-        if (lowPowerStartTime != 0) {
-            printf("[Display] Power in middle range (%.2fW), resetting low power timer\n", totalPower);
-            lowPowerStartTime = 0;
-        }
-    }
 }
 
 void setup()
@@ -237,37 +282,10 @@ void loop()
         vTaskDelay(pdMS_TO_TICKS(1000));
         return;
     }
-
-    unsigned long currentMillis = millis();
     
     // 处理LVGL任务
     if (displayInitialized) {
         lv_timer_handler();
-    }
-    
-    // 检查并更新屏幕显示
-    checkAndUpdateScreen();
-    
-    // 定期检查WiFi状态
-    if (currentMillis - lastWiFiCheck >= WIFI_CHECK_INTERVAL) {
-        bool wifiReady = ConfigManager::isConfigured() && ConfigManager::isConnected();
-        
-        if (wifiReady && !powerMonitorInitialized) {
-            printf("[Power] Initializing power monitor...\n");
-            PowerMonitor_Init();
-            powerMonitorInitialized = true;
-            printf("[Power] Power monitor initialized successfully\n");
-            printf("[WiFi] Connected to: %s\n", ConfigManager::getSSID().c_str());
-            printf("[WiFi] IP address: %s\n", WiFi.localIP().toString().c_str());
-        } else if (!wifiReady && powerMonitorInitialized) {
-            powerMonitorInitialized = false;
-            printf("[System] Power monitor stopped due to WiFi disconnection\n");
-            if (ConfigManager::isConfigured()) {
-                printf("[WiFi] Connection lost, will retry automatically\n");
-            }
-        }
-        
-        lastWiFiCheck = currentMillis;
     }
     
     // 给其他任务一些执行时间

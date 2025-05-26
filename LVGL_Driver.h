@@ -10,7 +10,7 @@
 #define LVGL_HEIGHT   LCD_HEIGHT
 #define LVGL_BUF_LEN  (LVGL_WIDTH * LVGL_HEIGHT)
 
-#define EXAMPLE_LVGL_TICK_PERIOD_MS  10
+#define EXAMPLE_LVGL_TICK_PERIOD_MS  5
 
 
 void Lvgl_print(const char * buf);
