@@ -66,7 +66,7 @@ void syncTimeWithNTP() {
     
     while (timeinfo.tm_year < (2024 - 1900) && retry < maxRetries) {
         printf("[Time] Waiting for NTP sync... (%d/%d)\n", retry + 1, maxRetries);
-        delay(1000);
+        vTaskDelay(pdMS_TO_TICKS(1000));
         time(&now);
         localtime_r(&now, &timeinfo);
         retry++;

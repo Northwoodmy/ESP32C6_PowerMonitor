@@ -30,7 +30,7 @@ void ConfigManager::begin() {
     // 初始化Preferences
     if (!preferences.begin(NVS_NAMESPACE, false)) {
         printf("[Config] Failed to initialize preferences\n");
-        delay(1000);
+        vTaskDelay(pdMS_TO_TICKS(1000));
         return;
     }
     
@@ -47,29 +47,29 @@ void ConfigManager::begin() {
     if (ssid.length() > 0) {
         configured = true;
         printf("[WiFi] Found saved configuration for SSID: %s\n", ssid.c_str());
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         // 先关闭WiFi，然后重新初始化
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         // 设置WiFi模式为AP+STA
         WiFi.mode(WIFI_AP_STA);
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         // 连接到保存的WiFi
         String password = preferences.getString(NVS_PASS_KEY, "");
         printf("[WiFi] Attempting to connect to saved network...\n");
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         WiFi.begin(ssid.c_str(), password.c_str());
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         // 等待WiFi连接（最多等待5秒）
         int attempts = 0;
         while (WiFi.status() != WL_CONNECTED && attempts < 10) {
-            delay(500);
+            vTaskDelay(pdMS_TO_TICKS(500));
             printf(".");
             attempts++;
         }
@@ -83,32 +83,32 @@ void ConfigManager::begin() {
         }
     } else {
         printf("[WiFi] No saved configuration found\n");
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         // 初始化AP模式
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         WiFi.mode(WIFI_AP);
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         
         // 未配置时显示AP配置屏幕
         DisplayManager::createAPScreen(AP_SSID, WiFi.softAPIP().toString().c_str());
     }
     
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     // 启动AP和配置门户
     startConfigPortal();
     
     printf("[Config] Initialization complete\n");
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 void ConfigManager::startConfigPortal() {
     if (!apStarted) {
-        delay(100);  // 添加延时
+        vTaskDelay(pdMS_TO_TICKS(100));  // 添加延时
         setupAP();
         apStarted = true;
         
@@ -177,7 +177,7 @@ void ConfigManager::webServerTask(void* parameter) {
                     String password = preferences.getString(NVS_PASS_KEY, "");
                     if (ssid.length() > 0) {
                         WiFi.disconnect();
-                        delay(100);
+                        vTaskDelay(pdMS_TO_TICKS(100));
                         WiFi.begin(ssid.c_str(), password.c_str());
                     }
                 }
@@ -204,20 +204,20 @@ void ConfigManager::setupAP() {
     // 启动AP
     if (WiFi.getMode() == WIFI_OFF) {
         WiFi.mode(WIFI_AP);
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
     
     printf("[WiFi] Starting AP mode...\n");
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     // 配置AP
     WiFi.softAP(AP_SSID);
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     // 配置DNS服务器
     if (!dnsServer.start(53, "*", WiFi.softAPIP())) {
         printf("[DNS] Failed to start DNS server\n");
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
     
     // 启动Web服务器
@@ -230,7 +230,7 @@ void ConfigManager::setupAP() {
     
     server.begin();  // 直接调用，不检查返回值
     printf("[Web] Server started\n");
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 void ConfigManager::handleRoot() {
@@ -523,7 +523,7 @@ void ConfigManager::handleSave() {
         </html>)rawliteral";
         
         server.send(200, "text/html", html);
-        delay(1000);
+        vTaskDelay(pdMS_TO_TICKS(1000));
         if (needRestart) {
             ESP.restart();
         }
@@ -580,7 +580,7 @@ void ConfigManager::handleReset() {
     server.send(200, "text/html", html);
     
     // 等待响应发送完成
-    delay(1000);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     
     // 最后重启设备
     ESP.restart();
@@ -620,7 +620,7 @@ void ConfigManager::resetConfig() {
     // 断开WiFi连接
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     configured = false;
     printf("[Config] All configurations have been reset\n");

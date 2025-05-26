@@ -12,7 +12,7 @@ void WiFi_Init(const char* ssid, const char* password) {
     // 等待WiFi连接
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
+        vTaskDelay(pdMS_TO_TICKS(500));
         attempts++;
     }
     
