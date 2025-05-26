@@ -275,7 +275,7 @@ void setup()
     }
 }
 
-void loop()
+void Timer_Loop()
 {
     // 如果系统未初始化，不执行任何操作
     if (!systemInitialized) {
@@ -285,7 +285,9 @@ void loop()
     
     // 处理LVGL任务
     if (displayInitialized) {
+        DisplayManager::takeLvglLock();
         lv_timer_handler();
+        DisplayManager::giveLvglLock();
     }
     
     // 给其他任务一些执行时间
