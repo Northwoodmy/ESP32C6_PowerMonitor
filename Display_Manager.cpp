@@ -19,9 +19,9 @@ lv_obj_t* DisplayManager::dateLabel = nullptr;
 lv_obj_t* DisplayManager::powerMonitorContainer = nullptr;
 lv_obj_t* DisplayManager::ui_title = nullptr;
 lv_obj_t* DisplayManager::ui_total_label = nullptr;
-lv_obj_t* DisplayManager::ui_port_labels[MAX_PORTS] = {nullptr};
-lv_obj_t* DisplayManager::ui_power_values[MAX_PORTS] = {nullptr};
-lv_obj_t* DisplayManager::ui_power_bars[MAX_PORTS] = {nullptr};
+lv_obj_t* DisplayManager::ui_port_labels[MAX_PORTS] = {nullptr, nullptr, nullptr, nullptr, nullptr};
+lv_obj_t* DisplayManager::ui_power_values[MAX_PORTS] = {nullptr, nullptr, nullptr, nullptr, nullptr};
+lv_obj_t* DisplayManager::ui_power_bars[MAX_PORTS] = {nullptr, nullptr, nullptr, nullptr, nullptr};
 lv_obj_t* DisplayManager::ui_total_bar = nullptr;
 lv_obj_t* DisplayManager::ui_wifi_status = nullptr;
 
@@ -634,10 +634,19 @@ void DisplayManager::updatePowerMonitorScreen() {
 
         // 更新功率值
         int power_int = (int)(portInfos[i].power * 100);
-        snprintf(text_buf, sizeof(text_buf), "%s %d.%02dW#", 
-                color_code, 
-                power_int / 100, 
-                power_int % 100);
+        // 增加缓冲区大小检查，确保有足够空间
+        int needed_size = strlen(color_code) + 20; // 颜色代码 + 数字 + 格式字符
+        if (needed_size < sizeof(text_buf)) {
+            snprintf(text_buf, sizeof(text_buf), "%s %d.%02dW#", 
+                    color_code, 
+                    power_int / 100, 
+                    power_int % 100);
+        } else {
+            // 如果缓冲区不够，使用简化格式
+            snprintf(text_buf, sizeof(text_buf), "#FFFFFF %d.%02dW#", 
+                    power_int / 100, 
+                    power_int % 100);
+        }
         lv_label_set_text(ui_power_values[i], text_buf);
 
         // 更新进度条
@@ -683,7 +692,12 @@ void DisplayManager::updatePowerMonitorScreen() {
 void DisplayManager::takeLvglLock() {
     if (lvgl_mutex == nullptr) {
         printf("[Display] LVGL mutex not initialized\n");
-        return;
+        // 如果互斥锁未初始化，尝试重新创建
+        lvgl_mutex = xSemaphoreCreateMutex();
+        if (lvgl_mutex == nullptr) {
+            printf("[Display] Failed to create LVGL mutex\n");
+            return;
+        }
     }
     xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
 }
@@ -691,5 +705,7 @@ void DisplayManager::takeLvglLock() {
 void DisplayManager::giveLvglLock() {
     if (lvgl_mutex != nullptr) {
         xSemaphoreGive(lvgl_mutex);
+    } else {
+        printf("[Display] Warning: Attempting to give uninitialized mutex\n");
     }
 } 
