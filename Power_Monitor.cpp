@@ -37,6 +37,61 @@ TaskHandle_t monitorTaskHandle = NULL;
 // 数据队列
 QueueHandle_t dataQueue = NULL;
 
+// 界面状态管理
+enum UIState {
+    UI_POWER_MONITOR,
+    UI_SCAN_SCREEN,
+    UI_WIFI_ERROR,  // 添加WiFi错误界面状态
+    UI_UNKNOWN
+};
+static UIState globalUIState = UI_UNKNOWN;
+
+// 安全的界面切换函数
+static void safeUISwitch(UIState newState) {
+    if (globalUIState == newState) {
+        return; // 已经是目标状态，无需切换
+    }
+    
+    printf("[Monitor] Safe UI switch from %d to %d\n", globalUIState, newState);
+    
+    // 删除当前界面
+    switch (globalUIState) {
+        case UI_SCAN_SCREEN:
+            DisplayManager::deleteScanScreen();
+            break;
+        case UI_WIFI_ERROR:
+            DisplayManager::deleteWiFiErrorScreen();
+            break;
+        case UI_POWER_MONITOR:
+            // Power monitor screen 通常不需要删除，会被覆盖
+            break;
+        default:
+            break;
+    }
+    
+    // 短暂延迟确保界面删除完成
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // 创建新界面
+    switch (newState) {
+        case UI_POWER_MONITOR:
+            DisplayManager::createPowerMonitorScreen();
+            break;
+        case UI_SCAN_SCREEN:
+            DisplayManager::createScanScreen();
+            DisplayManager::updateScanStatus("Searching for devices...");
+            break;
+        case UI_WIFI_ERROR:
+            DisplayManager::createWiFiErrorScreen();
+            break;
+        default:
+            break;
+    }
+    
+    globalUIState = newState;
+    printf("[Monitor] UI switch completed\n");
+}
+
 // NTP服务器配置
 const char* NTP_SERVER = "ntp.aliyun.com";  // 阿里云NTP服务器
 const char* TZ_INFO = "CST-8";              // 中国时区
@@ -116,8 +171,9 @@ void PowerMonitor_Init() {
     // 创建数据队列
     dataQueue = xQueueCreate(1, sizeof(PowerData));
     
-    // 创建UI
-    DisplayManager::createPowerMonitorScreen();
+    // 初始化界面状态并创建电源监控界面
+    globalUIState = UI_UNKNOWN;
+    safeUISwitch(UI_POWER_MONITOR);
     
     // 启动监控任务
     PowerMonitor_Start();
@@ -133,21 +189,29 @@ void PowerMonitor_Task(void* parameter) {
     uint32_t lastScanTime = 0;
     const uint32_t SCAN_RETRY_INTERVAL = 30000;
     bool isScanning = false;
+    uint32_t lastSuccessfulDataTime = 0;
+    const uint32_t DATA_TIMEOUT = 10000; // 10秒数据超时
+    uint32_t wifiDisconnectTime = 0;     // WiFi断开时间
+    const uint32_t WIFI_ERROR_TIMEOUT = 15000; // 15秒后显示WiFi错误界面
     
     while (true) {
         bool currentWiFiState = WiFi.status() == WL_CONNECTED;
+        uint32_t currentTime = millis();
         
         // WiFi状态发生变化
         if (currentWiFiState != lastWiFiState) {
             if (currentWiFiState) {
                 printf("[Monitor] WiFi connected\n");
                 syncTimeWithNTP();
-                // WiFi连接后，显示电源监控界面
-                DisplayManager::createPowerMonitorScreen();
+                // WiFi连接后，切换到电源监控界面
+                safeUISwitch(UI_POWER_MONITOR);
+                isScanning = false; // 重置扫描状态
+                wifiDisconnectTime = 0; // 重置断开时间
                 vTaskDelay(pdMS_TO_TICKS(1000));
             } else {
                 printf("[Monitor] WiFi disconnected\n");
                 dataError = true;
+                wifiDisconnectTime = currentTime; // 记录断开时间
             }
             lastWiFiState = currentWiFiState;
         }
@@ -159,7 +223,14 @@ void PowerMonitor_Task(void* parameter) {
         
         // 检查WiFi连接
         if (!currentWiFiState) {
-            uint32_t currentTime = millis();
+            // 检查是否需要显示WiFi错误界面
+            if (wifiDisconnectTime > 0 && 
+                (currentTime - wifiDisconnectTime >= WIFI_ERROR_TIMEOUT) &&
+                globalUIState != UI_WIFI_ERROR) {
+                printf("[Monitor] WiFi disconnected for too long, showing error screen\n");
+                safeUISwitch(UI_WIFI_ERROR);
+            }
+            
             if (currentTime - wifiRetryTime >= WIFI_RETRY_INTERVAL) {
                 printf("[Monitor] Trying to reconnect WiFi...\n");
                 WiFi.reconnect();
@@ -263,53 +334,99 @@ void PowerMonitor_Task(void* parameter) {
                 totalPower += portInfos[i].power;
             }
             
+            // 数据获取成功，确保显示电源监控界面
+            if (globalUIState != UI_POWER_MONITOR) {
+                printf("[Monitor] Data received successfully, switching to power monitor\n");
+                safeUISwitch(UI_POWER_MONITOR);
+            }
+            
             // 更新UI
             if (DisplayManager::isPowerMonitorScreenActive()) {
                 DisplayManager::updatePowerMonitorScreen();
             }
             
             dataError = false;
-            
-            // 如果之前在扫描，现在恢复了连接，则切换回电源监控界面
-            if (isScanning) {
-                DisplayManager::deleteScanScreen();
-                DisplayManager::createPowerMonitorScreen();
-                isScanning = false;
-            }
+            isScanning = false; // 重置扫描状态
+            lastSuccessfulDataTime = currentTime;
         } else {
             dataError = true;
             printf("[Monitor] Failed to fetch data, HTTP code: %d\n", httpCode);
             
-            uint32_t currentTime = millis();
-            if (currentTime - lastScanTime >= SCAN_RETRY_INTERVAL) {
-                if (!isScanning) {
-                    // 显示扫描界面
-                    DisplayManager::createScanScreen();
-                    DisplayManager::updateScanStatus("Searching for devices...");
-                    isScanning = true;
-                }
-                
-                printf("[Monitor] Trying to find new metrics server...\n");
-                String newUrl;
-                
-                if (NetworkScanner::findMetricsServer(newUrl, true)) {
-                    printf("[Monitor] Found new metrics server, updating URL to: %s\n", newUrl.c_str());
-                    ConfigManager::saveMonitorUrl(newUrl.c_str());
+            // 只有在WiFi连接正常但数据获取失败时才进行扫描
+            // 如果是WiFi错误状态，则不进行设备扫描
+            if (globalUIState != UI_WIFI_ERROR) {
+                // 检查是否需要开始扫描
+                if (currentTime - lastScanTime >= SCAN_RETRY_INTERVAL) {
+                    // 只有在不是扫描界面时才切换到扫描界面
+                    if (globalUIState != UI_SCAN_SCREEN) {
+                        safeUISwitch(UI_SCAN_SCREEN);
+                        isScanning = true;
+                    }
                     
-                    // 更新扫描状态并等待
-                    DisplayManager::updateScanStatus("Device found! Connecting...");
-                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    printf("[Monitor] Trying to find new metrics server...\n");
                     
-                    // 切换回电源监控界面
-                    DisplayManager::deleteScanScreen();
-                    DisplayManager::createPowerMonitorScreen();
-                    isScanning = false;
-                } else {
-                    // 更新扫描状态
-                    DisplayManager::updateScanStatus("No devices found, retrying...");
+                    // 先快速检查一次原连接是否恢复
+                    HTTPClient testHttp;
+                    testHttp.begin(url);
+                    testHttp.setTimeout(1000); // 1秒超时
+                    int testCode = testHttp.GET();
+                    
+                    if (testCode > 0 && testCode == HTTP_CODE_OK) {
+                        printf("[Monitor] Original connection restored!\n");
+                        DisplayManager::updateScanStatus("Connection restored!");
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                        
+                        testHttp.end();
+                        safeUISwitch(UI_POWER_MONITOR);
+                        isScanning = false;
+                    } else {
+                        testHttp.end();
+                        
+                        // 原连接仍然失败，尝试扫描新设备
+                        String newUrl;
+                        DisplayManager::updateScanStatus("Searching for devices...");
+                        
+                        if (NetworkScanner::findMetricsServer(newUrl, true)) {
+                            printf("[Monitor] Found new metrics server: %s\n", newUrl.c_str());
+                            ConfigManager::saveMonitorUrl(newUrl.c_str());
+                            
+                            DisplayManager::updateScanStatus("New device found! Connecting...");
+                            vTaskDelay(pdMS_TO_TICKS(2000));
+                            
+                            safeUISwitch(UI_POWER_MONITOR);
+                            isScanning = false;
+                        } else {
+                            DisplayManager::updateScanStatus("No devices found, will retry...");
+                            isScanning = true;
+                        }
+                    }
+                    
+                    lastScanTime = currentTime;
+                } else if (globalUIState == UI_SCAN_SCREEN && isScanning) {
+                    // 在扫描界面期间，定期检查原连接是否恢复
+                    static uint32_t lastQuickCheck = 0;
+                    if (currentTime - lastQuickCheck >= 3000) { // 每3秒快速检查一次
+                        printf("[Monitor] Quick check during scan...\n");
+                        HTTPClient quickHttp;
+                        quickHttp.begin(url);
+                        quickHttp.setTimeout(800); // 短超时
+                        int quickCode = quickHttp.GET();
+                        
+                        if (quickCode > 0 && quickCode == HTTP_CODE_OK) {
+                            printf("[Monitor] Original connection restored during scan!\n");
+                            DisplayManager::updateScanStatus("Connection restored!");
+                            vTaskDelay(pdMS_TO_TICKS(1000));
+                            
+                            safeUISwitch(UI_POWER_MONITOR);
+                            isScanning = false;
+                        } else {
+                            // 更新扫描状态显示
+                            DisplayManager::updateScanStatus("Still searching...");
+                        }
+                        quickHttp.end();
+                        lastQuickCheck = currentTime;
+                    }
                 }
-                
-                lastScanTime = currentTime;
             }
         }
         
