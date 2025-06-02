@@ -378,7 +378,7 @@ bool initializeSystem() {
         LVGL_TASK_PRIORITY,    // 任务优先级
         &lvglTaskHandle        // 任务句柄
     );
-
+/*
     // 创建内存监控任务
     xTaskCreate(
         memoryMonitorTask,         // 任务函数
@@ -388,6 +388,7 @@ bool initializeSystem() {
         MEMORY_TASK_PRIORITY,      // 任务优先级
         &memoryTaskHandle          // 任务句柄
     );
+*/
     
     vTaskDelay(pdMS_TO_TICKS(100));
     printf("[System] System initialization complete\n");
