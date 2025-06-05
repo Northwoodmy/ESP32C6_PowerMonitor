@@ -17,6 +17,9 @@
 #include "Network_Scanner.h"
 #include <time.h>
 
+// 声明主文件中的函数
+extern void resetTimeScreenState();
+
 // 声明外部常量引用
 extern const int MAX_POWER_WATTS;
 extern const int MAX_PORT_WATTS;
@@ -187,16 +190,16 @@ void PowerMonitor_Task(void* parameter) {
     uint32_t wifiRetryTime = 0;
     const uint32_t WIFI_RETRY_INTERVAL = 5000;
     uint32_t lastScanTime = 0;
-    const uint32_t SCAN_RETRY_INTERVAL = 10000; // 缩短到10秒
+    const uint32_t SCAN_RETRY_INTERVAL = 6000; // 进一步缩短到6秒
     bool isScanning = false;
     uint32_t lastSuccessfulDataTime = 0;
-    const uint32_t DATA_TIMEOUT = 10000; // 10秒数据超时
+    const uint32_t DATA_TIMEOUT = 8000; // 8秒数据超时
     uint32_t wifiDisconnectTime = 0;     // WiFi断开时间
-    const uint32_t WIFI_ERROR_TIMEOUT = 15000; // 15秒后显示WiFi错误界面
+    const uint32_t WIFI_ERROR_TIMEOUT = 12000; // 12秒后显示WiFi错误界面
     
-    // 连续失败检测机制
+    // 连续失败检测机制 - 优化触发策略
     uint32_t consecutiveFailures = 0;
-    const uint32_t FAILURE_THRESHOLD = 3; // 连续失败3次才触发扫描
+    const uint32_t FAILURE_THRESHOLD = 2; // 减少到连续失败2次触发扫描
     uint32_t lastFailureTime = 0;
     
     while (true) {
@@ -213,6 +216,10 @@ void PowerMonitor_Task(void* parameter) {
                 isScanning = false; // 重置扫描状态
                 wifiDisconnectTime = 0; // 重置断开时间
                 consecutiveFailures = 0; // 重置失败计数器
+                
+                // 重置时间切换状态，让主任务重新评估功率状态
+                resetTimeScreenState();
+                
                 vTaskDelay(pdMS_TO_TICKS(1000));
             } else {
                 printf("[Monitor] WiFi disconnected\n");
@@ -344,6 +351,9 @@ void PowerMonitor_Task(void* parameter) {
             if (globalUIState != UI_POWER_MONITOR) {
                 printf("[Monitor] Data received successfully, switching to power monitor\n");
                 safeUISwitch(UI_POWER_MONITOR);
+                
+                // 重置时间切换状态，让主任务重新评估功率状态
+                resetTimeScreenState();
             }
             
             // 更新UI
@@ -384,10 +394,10 @@ void PowerMonitor_Task(void* parameter) {
                 bool shouldTriggerScan = false;
                 
                 if (isTemporaryError) {
-                    // 临时错误需要更多次失败才触发扫描（6次）
+                    // 临时错误需要更多次失败才触发扫描（4次）
                     shouldTriggerScan = (consecutiveFailures >= FAILURE_THRESHOLD * 2);
                 } else {
-                    // 非临时错误，达到失败阈值就触发扫描（3次）
+                    // 非临时错误，达到失败阈值就触发扫描（2次）
                     shouldTriggerScan = (consecutiveFailures >= FAILURE_THRESHOLD);
                 }
                 
@@ -420,6 +430,9 @@ void PowerMonitor_Task(void* parameter) {
                         safeUISwitch(UI_POWER_MONITOR);
                         isScanning = false;
                         consecutiveFailures = 0; // 重置失败计数器
+                        
+                        // 重置时间切换状态，让主任务重新评估功率状态
+                        resetTimeScreenState();
                     } else {
                         testHttp.end();
                         
@@ -437,6 +450,9 @@ void PowerMonitor_Task(void* parameter) {
                             safeUISwitch(UI_POWER_MONITOR);
                             isScanning = false;
                             consecutiveFailures = 0; // 重置失败计数器
+                            
+                            // 重置时间切换状态，让主任务重新评估功率状态
+                            resetTimeScreenState();
                         } else {
                             DisplayManager::updateScanStatus("cp02 not found, will retry...");
                             isScanning = true;
@@ -473,6 +489,9 @@ void PowerMonitor_Task(void* parameter) {
                             safeUISwitch(UI_POWER_MONITOR);
                             isScanning = false;
                             consecutiveFailures = 0; // 重置失败计数器
+                            
+                            // 重置时间切换状态，让主任务重新评估功率状态
+                            resetTimeScreenState();
                         } else {
                             // 更新扫描状态显示
                             DisplayManager::updateScanStatus("Still looking for cp02...");

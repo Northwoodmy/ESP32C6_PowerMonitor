@@ -59,6 +59,13 @@ static unsigned long lowPowerStartTime = 0;  // 低功率开始时间
 static bool rgbTempDisabled = false;  // 用于跟踪RGB灯是否被临时禁用
 const unsigned long LOW_POWER_DELAY = 30000;  // 低功率切换延迟（30秒）
 
+// 公开函数：重置时间切换状态（供其他模块调用）
+void resetTimeScreenState() {
+    isInTimeMode = false;
+    lowPowerStartTime = 0;
+    printf("[Display] Time screen state reset by external module\n");
+}
+
 // LVGL任务相关
 TaskHandle_t lvglTaskHandle = NULL;
 const uint32_t LVGL_TASK_STACK_SIZE = 16384;  // 增加到16KB
@@ -126,8 +133,8 @@ void screenWifiMonitorTask(void* parameter) {
             
             float totalPower = PowerMonitor_GetTotalPower();
             
-            // 如果正在扫描，不执行切换
-            if (!DisplayManager::isScanScreenActive()) {
+            // 如果正在扫描或显示WiFi错误界面，不执行切换
+            if (!DisplayManager::isScanScreenActive() && !DisplayManager::isWiFiErrorScreenActive()) {
                 if (totalPower < 1.0) {
                     // 低功率状态
                     if (!isInTimeMode) {
