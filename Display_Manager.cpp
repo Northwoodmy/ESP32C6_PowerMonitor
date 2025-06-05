@@ -331,14 +331,14 @@ void DisplayManager::createScanScreen() {
         
         // 创建扫描标题
         scanLabel = lv_label_create(scanContainer);
-        lv_label_set_text(scanLabel, "Scanning Devices...");
+        lv_label_set_text(scanLabel, "Looking for cp02...");
         lv_obj_set_style_text_color(scanLabel, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_font(scanLabel, &lv_font_montserrat_24, 0);
         lv_obj_align(scanLabel, LV_ALIGN_CENTER, 0, -30);
         
         // 创建状态文本
         scanStatus = lv_label_create(scanContainer);
-        lv_label_set_text(scanStatus, "Searching for devices on network");
+        lv_label_set_text(scanStatus, "Using mDNS to find cp02 device");
         lv_obj_set_style_text_color(scanStatus, lv_color_hex(0x00FF00), 0);
         lv_obj_set_style_text_font(scanStatus, &lv_font_montserrat_20, 0);
         lv_obj_set_style_text_align(scanStatus, LV_TEXT_ALIGN_CENTER, 0);

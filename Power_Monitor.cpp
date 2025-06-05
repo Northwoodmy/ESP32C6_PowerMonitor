@@ -79,7 +79,7 @@ static void safeUISwitch(UIState newState) {
             break;
         case UI_SCAN_SCREEN:
             DisplayManager::createScanScreen();
-            DisplayManager::updateScanStatus("Searching for devices...");
+            DisplayManager::updateScanStatus("Starting mDNS scan for cp02...");
             break;
         case UI_WIFI_ERROR:
             DisplayManager::createWiFiErrorScreen();
@@ -360,6 +360,7 @@ void PowerMonitor_Task(void* parameter) {
                     // 只有在不是扫描界面时才切换到扫描界面
                     if (globalUIState != UI_SCAN_SCREEN) {
                         safeUISwitch(UI_SCAN_SCREEN);
+                        DisplayManager::updateScanStatus("Starting mDNS scan for cp02...");
                         isScanning = true;
                     }
                     
@@ -384,19 +385,19 @@ void PowerMonitor_Task(void* parameter) {
                         
                         // 原连接仍然失败，尝试扫描新设备
                         String newUrl;
-                        DisplayManager::updateScanStatus("Searching for devices...");
+                        DisplayManager::updateScanStatus("Looking for cp02 device via mDNS...");
                         
                         if (NetworkScanner::findMetricsServer(newUrl, true)) {
-                            printf("[Monitor] Found new metrics server: %s\n", newUrl.c_str());
+                            printf("[Monitor] Found cp02 metrics server: %s\n", newUrl.c_str());
                             ConfigManager::saveMonitorUrl(newUrl.c_str());
                             
-                            DisplayManager::updateScanStatus("New device found! Connecting...");
+                            DisplayManager::updateScanStatus("cp02 found! Connecting...");
                             vTaskDelay(pdMS_TO_TICKS(2000));
                             
                             safeUISwitch(UI_POWER_MONITOR);
                             isScanning = false;
                         } else {
-                            DisplayManager::updateScanStatus("No devices found, will retry...");
+                            DisplayManager::updateScanStatus("cp02 not found, will retry...");
                             isScanning = true;
                         }
                     }
@@ -421,7 +422,7 @@ void PowerMonitor_Task(void* parameter) {
                             isScanning = false;
                         } else {
                             // 更新扫描状态显示
-                            DisplayManager::updateScanStatus("Still searching...");
+                            DisplayManager::updateScanStatus("Still looking for cp02...");
                         }
                         quickHttp.end();
                         lastQuickCheck = currentTime;
