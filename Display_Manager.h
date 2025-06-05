@@ -98,4 +98,8 @@ private:
     // 互斥锁相关
     static void takeLvglLock();  // 改为void，因为会一直等待直到获取锁
     static void giveLvglLock();
+    
+    // 安全性检查函数
+    static bool isValidScreenState();  // 检查屏幕状态一致性
+    static void resetAllScreenStates();  // 紧急重置所有屏幕状态
 }; 

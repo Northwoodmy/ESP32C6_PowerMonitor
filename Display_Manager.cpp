@@ -65,27 +65,48 @@ void DisplayManager::init() {
 
 void DisplayManager::createMainScreen() {
     if (mainScreen == nullptr) {
+        takeLvglLock();
         mainScreen = lv_obj_create(NULL);
         lv_obj_set_style_bg_color(mainScreen, lv_color_black(), 0);
         currentScreen = mainScreen;
         lv_scr_load(mainScreen);
+        giveLvglLock();
+        printf("[Display] Main screen created successfully\n");
     }
 }
 
 void DisplayManager::hideAllContainers() {
+    // 注意：此函数假设调用者已经获取了LVGL锁
     if (apContainer) lv_obj_add_flag(apContainer, LV_OBJ_FLAG_HIDDEN);
     if (wifiErrorContainer) lv_obj_add_flag(wifiErrorContainer, LV_OBJ_FLAG_HIDDEN);
     if (timeContainer) lv_obj_add_flag(timeContainer, LV_OBJ_FLAG_HIDDEN);
     if (powerMonitorContainer) lv_obj_add_flag(powerMonitorContainer, LV_OBJ_FLAG_HIDDEN);
     if (scanContainer) lv_obj_add_flag(scanContainer, LV_OBJ_FLAG_HIDDEN);
+    
+    // 同时重置所有屏幕状态标志，确保状态一致性
+    apScreenActive = false;
+    wifiErrorScreenActive = false;
+    timeScreenActive = false;
+    powerMonitorScreenActive = false;
+    scanScreenActive = false;
 }
 
 void DisplayManager::createWiFiErrorScreen() {
     printf("[Display] Creating WiFi error screen\n");
     
+    takeLvglLock();
+    
     if (wifiErrorScreenActive) {
         printf("[Display] WiFi error screen already active\n");
+        giveLvglLock();
         return;
+    }
+    
+    // 检查状态一致性
+    if (!isValidScreenState()) {
+        printf("[Display] Invalid screen state detected, resetting...\n");
+        resetAllScreenStates();
+        takeLvglLock(); // 重新获取锁，因为resetAllScreenStates会释放锁
     }
     
     hideAllContainers();
@@ -117,6 +138,8 @@ void DisplayManager::createWiFiErrorScreen() {
     lv_obj_clear_flag(wifiErrorContainer, LV_OBJ_FLAG_HIDDEN);
     wifiErrorScreenActive = true;
     
+    giveLvglLock();
+    
     // 设置为正常亮度
     setScreenBrightness(BRIGHTNESS_NORMAL);
 }
@@ -124,8 +147,11 @@ void DisplayManager::createWiFiErrorScreen() {
 void DisplayManager::createTimeScreen() {
     printf("[Display] Creating time screen\n");
     
+    takeLvglLock();
+    
     if (timeScreenActive) {
         printf("[Display] Time screen already active\n");
+        giveLvglLock();
         return;
     }
     
@@ -235,6 +261,8 @@ void DisplayManager::createTimeScreen() {
     timeScreenActive = true;
     screenSwitchTime = millis();
     
+    giveLvglLock();
+    
     // 更新时间显示
     updateTimeScreen();
     
@@ -245,12 +273,13 @@ void DisplayManager::createTimeScreen() {
 void DisplayManager::createPowerMonitorScreen() {
     printf("[Display] Creating power monitor screen\n");
     
+    takeLvglLock();
+    
     if (powerMonitorScreenActive) {
         printf("[Display] Power monitor screen already active\n");
+        giveLvglLock();
         return;
     }
-    
-    takeLvglLock();
     
     hideAllContainers();
     
@@ -283,8 +312,11 @@ void DisplayManager::createPowerMonitorScreen() {
 void DisplayManager::createScanScreen() {
     printf("[Display] Creating scan screen\n");
     
+    takeLvglLock();
+    
     if (scanScreenActive) {
         printf("[Display] Scan screen already active\n");
+        giveLvglLock();
         return;
     }
     
@@ -319,6 +351,8 @@ void DisplayManager::createScanScreen() {
     lv_obj_clear_flag(scanContainer, LV_OBJ_FLAG_HIDDEN);
     scanScreenActive = true;
     
+    giveLvglLock();
+    
     // 设置为正常亮度
     setScreenBrightness(BRIGHTNESS_NORMAL);
 }
@@ -326,37 +360,48 @@ void DisplayManager::createScanScreen() {
 // 删除屏幕函数修改为隐藏对应容器
 void DisplayManager::deleteWiFiErrorScreen() {
     if (wifiErrorContainer != nullptr) {
+        takeLvglLock();
         lv_obj_add_flag(wifiErrorContainer, LV_OBJ_FLAG_HIDDEN);
         wifiErrorScreenActive = false;
+        giveLvglLock();
     }
 }
 
 void DisplayManager::deleteTimeScreen() {
     if (timeContainer != nullptr) {
+        takeLvglLock();
         lv_obj_add_flag(timeContainer, LV_OBJ_FLAG_HIDDEN);
         timeScreenActive = false;
+        giveLvglLock();
     }
 }
 
 void DisplayManager::deletePowerMonitorScreen() {
     if (powerMonitorContainer != nullptr) {
+        takeLvglLock();
         lv_obj_add_flag(powerMonitorContainer, LV_OBJ_FLAG_HIDDEN);
         powerMonitorScreenActive = false;
+        giveLvglLock();
     }
 }
 
 void DisplayManager::deleteScanScreen() {
     if (scanContainer != nullptr) {
+        takeLvglLock();
         lv_obj_add_flag(scanContainer, LV_OBJ_FLAG_HIDDEN);
         scanScreenActive = false;
+        giveLvglLock();
     }
 }
 
 void DisplayManager::createAPScreen(const char* ssid, const char* ip) {
     printf("[Display] Creating AP screen\n");
     
+    takeLvglLock();
+    
     if (apScreenActive) {
         printf("[Display] AP screen already active\n");
+        giveLvglLock();
         return;
     }
     
@@ -376,6 +421,8 @@ void DisplayManager::createAPScreen(const char* ssid, const char* ip) {
     // 显示AP容器
     lv_obj_clear_flag(apContainer, LV_OBJ_FLAG_HIDDEN);
     apScreenActive = true;
+    
+    giveLvglLock();
     
     // 设置为正常亮度
     setScreenBrightness(BRIGHTNESS_NORMAL);
@@ -416,8 +463,10 @@ void DisplayManager::createAPScreenContent(const char* ssid, const char* ip) {
 
 void DisplayManager::deleteAPScreen() {
     if (apContainer != nullptr) {
+        takeLvglLock();
         lv_obj_add_flag(apContainer, LV_OBJ_FLAG_HIDDEN);
         apScreenActive = false;
+        giveLvglLock();
     }
 }
 
@@ -454,6 +503,8 @@ void DisplayManager::updateTimeScreen() {
     lastMin = timeinfo.tm_min;
     lastSec = timeinfo.tm_sec;
     
+    takeLvglLock();
+    
     // 格式化时间字符串
     char timeStr[32];
     snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", 
@@ -473,6 +524,8 @@ void DisplayManager::updateTimeScreen() {
                 timeinfo.tm_mday);
         lv_label_set_text(dateLabel, dateStr);
     }
+    
+    giveLvglLock();
 }
 
 bool DisplayManager::createPowerMonitorContent() {
@@ -584,7 +637,9 @@ bool DisplayManager::isScanScreenActive() {
 
 void DisplayManager::updateScanStatus(const char* status) {
     if (scanStatus != nullptr) {
+        takeLvglLock();
         lv_label_set_text(scanStatus, status);
+        giveLvglLock();
     }
 }
 
@@ -691,20 +746,41 @@ void DisplayManager::updatePowerMonitorScreen() {
 
 void DisplayManager::takeLvglLock() {
     if (lvgl_mutex == nullptr) {
-        printf("[Display] LVGL mutex not initialized\n");
+        printf("[Display] Error: LVGL mutex not initialized, recreating...\n");
         // 如果互斥锁未初始化，尝试重新创建
         lvgl_mutex = xSemaphoreCreateMutex();
         if (lvgl_mutex == nullptr) {
-            printf("[Display] Failed to create LVGL mutex\n");
+            printf("[Display] Fatal: Failed to create LVGL mutex\n");
             return;
         }
+        printf("[Display] LVGL mutex recreated successfully\n");
     }
+    
+    // 检查当前任务是否已经持有锁（可选的调试信息）
+    #ifdef DEBUG_DISPLAY_LOCKS
+    TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
+    printf("[Display] Task %p acquiring LVGL lock\n", currentTask);
+    #endif
+    
     xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
+    
+    #ifdef DEBUG_DISPLAY_LOCKS
+    printf("[Display] Task %p acquired LVGL lock\n", currentTask);
+    #endif
 }
 
 void DisplayManager::giveLvglLock() {
     if (lvgl_mutex != nullptr) {
+        #ifdef DEBUG_DISPLAY_LOCKS
+        TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
+        printf("[Display] Task %p releasing LVGL lock\n", currentTask);
+        #endif
+        
         xSemaphoreGive(lvgl_mutex);
+        
+        #ifdef DEBUG_DISPLAY_LOCKS
+        printf("[Display] Task %p released LVGL lock\n", currentTask);
+        #endif
     } else {
         printf("[Display] Warning: Attempting to give uninitialized mutex\n");
     }
@@ -714,4 +790,45 @@ void DisplayManager::handleLvglTask() {
     takeLvglLock();
     lv_timer_handler();
     giveLvglLock();
+}
+
+bool DisplayManager::isValidScreenState() {
+    // 检查是否有多个屏幕同时处于活动状态
+    int activeScreenCount = 0;
+    if (apScreenActive) activeScreenCount++;
+    if (wifiErrorScreenActive) activeScreenCount++;
+    if (timeScreenActive) activeScreenCount++;
+    if (powerMonitorScreenActive) activeScreenCount++;
+    if (scanScreenActive) activeScreenCount++;
+    
+    if (activeScreenCount > 1) {
+        printf("[Display] Warning: Multiple screens active simultaneously (%d)\n", activeScreenCount);
+        return false;
+    }
+    
+    return true;
+}
+
+void DisplayManager::resetAllScreenStates() {
+    printf("[Display] Emergency: Resetting all screen states\n");
+    
+    takeLvglLock();
+    
+    // 强制重置所有状态标志
+    apScreenActive = false;
+    wifiErrorScreenActive = false;
+    timeScreenActive = false;
+    powerMonitorScreenActive = false;
+    scanScreenActive = false;
+    
+    // 隐藏所有容器
+    if (apContainer) lv_obj_add_flag(apContainer, LV_OBJ_FLAG_HIDDEN);
+    if (wifiErrorContainer) lv_obj_add_flag(wifiErrorContainer, LV_OBJ_FLAG_HIDDEN);
+    if (timeContainer) lv_obj_add_flag(timeContainer, LV_OBJ_FLAG_HIDDEN);
+    if (powerMonitorContainer) lv_obj_add_flag(powerMonitorContainer, LV_OBJ_FLAG_HIDDEN);
+    if (scanContainer) lv_obj_add_flag(scanContainer, LV_OBJ_FLAG_HIDDEN);
+    
+    giveLvglLock();
+    
+    printf("[Display] All screen states reset\n");
 } 
