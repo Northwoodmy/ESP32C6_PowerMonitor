@@ -187,12 +187,17 @@ void PowerMonitor_Task(void* parameter) {
     uint32_t wifiRetryTime = 0;
     const uint32_t WIFI_RETRY_INTERVAL = 5000;
     uint32_t lastScanTime = 0;
-    const uint32_t SCAN_RETRY_INTERVAL = 30000;
+    const uint32_t SCAN_RETRY_INTERVAL = 10000; // 缩短到10秒
     bool isScanning = false;
     uint32_t lastSuccessfulDataTime = 0;
     const uint32_t DATA_TIMEOUT = 10000; // 10秒数据超时
     uint32_t wifiDisconnectTime = 0;     // WiFi断开时间
     const uint32_t WIFI_ERROR_TIMEOUT = 15000; // 15秒后显示WiFi错误界面
+    
+    // 连续失败检测机制
+    uint32_t consecutiveFailures = 0;
+    const uint32_t FAILURE_THRESHOLD = 3; // 连续失败3次才触发扫描
+    uint32_t lastFailureTime = 0;
     
     while (true) {
         bool currentWiFiState = WiFi.status() == WL_CONNECTED;
@@ -207,6 +212,7 @@ void PowerMonitor_Task(void* parameter) {
                 safeUISwitch(UI_POWER_MONITOR);
                 isScanning = false; // 重置扫描状态
                 wifiDisconnectTime = 0; // 重置断开时间
+                consecutiveFailures = 0; // 重置失败计数器
                 vTaskDelay(pdMS_TO_TICKS(1000));
             } else {
                 printf("[Monitor] WiFi disconnected\n");
@@ -348,15 +354,48 @@ void PowerMonitor_Task(void* parameter) {
             dataError = false;
             isScanning = false; // 重置扫描状态
             lastSuccessfulDataTime = currentTime;
+            consecutiveFailures = 0; // 重置连续失败计数器
         } else {
             dataError = true;
             printf("[Monitor] Failed to fetch data, HTTP code: %d\n", httpCode);
             
+            // 增加失败计数器
+            consecutiveFailures++;
+            lastFailureTime = currentTime;
+            
+            // 判断是否是临时性错误
+            bool isTemporaryError = false;
+            if (httpCode == -1 ||  // 超时错误
+                httpCode == HTTP_CODE_NOT_FOUND ||  // 404
+                httpCode == HTTP_CODE_INTERNAL_SERVER_ERROR ||  // 500
+                httpCode == HTTP_CODE_SERVICE_UNAVAILABLE ||  // 503
+                httpCode == HTTP_CODE_BAD_GATEWAY ||  // 502
+                httpCode == HTTP_CODE_GATEWAY_TIMEOUT) {  // 504
+                isTemporaryError = true;
+                printf("[Monitor] Detected temporary error (HTTP %d), consecutive failures: %d\n", httpCode, consecutiveFailures);
+            } else {
+                printf("[Monitor] Detected persistent error (HTTP %d), consecutive failures: %d\n", httpCode, consecutiveFailures);
+            }
+            
             // 只有在WiFi连接正常但数据获取失败时才进行扫描
             // 如果是WiFi错误状态，则不进行设备扫描
             if (globalUIState != UI_WIFI_ERROR) {
-                // 检查是否需要开始扫描
-                if (currentTime - lastScanTime >= SCAN_RETRY_INTERVAL) {
+                // 检查是否需要开始扫描（需要连续失败多次，且达到时间间隔）
+                bool shouldTriggerScan = false;
+                
+                if (isTemporaryError) {
+                    // 临时错误需要更多次失败才触发扫描（6次）
+                    shouldTriggerScan = (consecutiveFailures >= FAILURE_THRESHOLD * 2);
+                } else {
+                    // 非临时错误，达到失败阈值就触发扫描（3次）
+                    shouldTriggerScan = (consecutiveFailures >= FAILURE_THRESHOLD);
+                }
+                
+                if (shouldTriggerScan && (currentTime - lastScanTime >= SCAN_RETRY_INTERVAL)) {
+                    printf("[Monitor] Triggering scan after %d consecutive failures (threshold: %d for %s errors)\n", 
+                           consecutiveFailures, 
+                           isTemporaryError ? FAILURE_THRESHOLD * 2 : FAILURE_THRESHOLD,
+                           isTemporaryError ? "temporary" : "persistent");
                     // 只有在不是扫描界面时才切换到扫描界面
                     if (globalUIState != UI_SCAN_SCREEN) {
                         safeUISwitch(UI_SCAN_SCREEN);
@@ -380,6 +419,7 @@ void PowerMonitor_Task(void* parameter) {
                         testHttp.end();
                         safeUISwitch(UI_POWER_MONITOR);
                         isScanning = false;
+                        consecutiveFailures = 0; // 重置失败计数器
                     } else {
                         testHttp.end();
                         
@@ -396,6 +436,7 @@ void PowerMonitor_Task(void* parameter) {
                             
                             safeUISwitch(UI_POWER_MONITOR);
                             isScanning = false;
+                            consecutiveFailures = 0; // 重置失败计数器
                         } else {
                             DisplayManager::updateScanStatus("cp02 not found, will retry...");
                             isScanning = true;
@@ -403,7 +444,18 @@ void PowerMonitor_Task(void* parameter) {
                     }
                     
                     lastScanTime = currentTime;
-                } else if (globalUIState == UI_SCAN_SCREEN && isScanning) {
+                } else {
+                    // 还未达到扫描阈值，显示等待信息
+                    if (consecutiveFailures > 0) {
+                        uint32_t neededFailures = isTemporaryError ? FAILURE_THRESHOLD * 2 : FAILURE_THRESHOLD;
+                        if (consecutiveFailures < neededFailures) {
+                            printf("[Monitor] Waiting before scan (%d/%d failures, %s error)\n", 
+                                   consecutiveFailures, neededFailures, isTemporaryError ? "temporary" : "persistent");
+                        }
+                    }
+                }
+                
+                if (globalUIState == UI_SCAN_SCREEN && isScanning) {
                     // 在扫描界面期间，定期检查原连接是否恢复
                     static uint32_t lastQuickCheck = 0;
                     if (currentTime - lastQuickCheck >= 3000) { // 每3秒快速检查一次
@@ -420,6 +472,7 @@ void PowerMonitor_Task(void* parameter) {
                             
                             safeUISwitch(UI_POWER_MONITOR);
                             isScanning = false;
+                            consecutiveFailures = 0; // 重置失败计数器
                         } else {
                             // 更新扫描状态显示
                             DisplayManager::updateScanStatus("Still looking for cp02...");
