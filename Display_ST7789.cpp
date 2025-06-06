@@ -149,7 +149,12 @@ void LCD_Init(void)
 
   LCD_WriteCommand(0x11);
   delay(120);
-  LCD_WriteCommand(0x29); 
+  LCD_WriteCommand(0x29);
+  
+  // 清理屏幕，填充黑色避免花屏
+  printf("[LCD] Clearing screen to prevent artifacts...\n");
+  LCD_ClearScreen();
+  printf("[LCD] Screen cleared successfully\n");
 }
 /******************************************************************************
 function: Set the cursor position
@@ -219,6 +224,44 @@ void LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yen
   LCD_SetCursor(Xstart, Ystart, Xend, Yend);
   LCD_WriteData_nbyte((uint8_t*)color, Read_D, numBytes);        
 }
+
+/******************************************************************************
+function: Clear screen with black color to prevent artifacts
+parameter: None
+******************************************************************************/
+void LCD_ClearScreen(void)
+{
+  // 创建黑色填充缓冲区
+  uint16_t black_color = 0x0000;  // 黑色 (RGB565格式)
+  uint32_t total_pixels = LCD_WIDTH * LCD_HEIGHT;
+  
+  // 设置整个屏幕区域
+  LCD_SetCursor(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
+  
+  // 分块填充以节省内存
+  const uint16_t chunk_size = 1024;  // 每次填充1KB数据
+  uint16_t black_buffer[chunk_size];
+  
+  // 初始化黑色缓冲区
+  for(uint16_t i = 0; i < chunk_size; i++) {
+    black_buffer[i] = black_color;
+  }
+  
+  // 计算需要多少次填充
+  uint32_t chunks_needed = total_pixels / chunk_size;
+  uint32_t remaining_pixels = total_pixels % chunk_size;
+  
+  // 分批填充屏幕
+  for(uint32_t i = 0; i < chunks_needed; i++) {
+    LCD_WriteData_nbyte((uint8_t*)black_buffer, NULL, chunk_size * sizeof(uint16_t));
+  }
+  
+  // 填充剩余像素
+  if(remaining_pixels > 0) {
+    LCD_WriteData_nbyte((uint8_t*)black_buffer, NULL, remaining_pixels * sizeof(uint16_t));
+  }
+}
+
 // backlight
 void Backlight_Init(void)
 {
