@@ -329,9 +329,6 @@ bool initializeSystem() {
     LCD_Init();  // 直接调用，不检查返回值
     vTaskDelay(pdMS_TO_TICKS(100));
     
-    Set_Backlight(40);
-    vTaskDelay(pdMS_TO_TICKS(50));
-    
     Lvgl_Init();  // 直接调用，不检查返回值
     vTaskDelay(pdMS_TO_TICKS(100));
     
